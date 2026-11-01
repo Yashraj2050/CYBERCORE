@@ -49,19 +49,29 @@ async def analyze_dns(domain: str) -> dict:
         _query_mx_records(domain),
         _query_ns_records(domain),
         _query_txt_records(domain),
+        _query_dmarc_records(domain),
     ]
-    a_rec, mx_rec, ns_rec, txt_rec = await asyncio.gather(*tasks, return_exceptions=True)
+    a_rec, mx_rec, ns_rec, txt_rec, dmarc_res = await asyncio.gather(*tasks, return_exceptions=True)
 
     results["a_records"] = a_rec if not isinstance(a_rec, Exception) else []
     results["mx_records"] = mx_rec if not isinstance(mx_rec, Exception) else []
     results["ns_records"] = ns_rec if not isinstance(ns_rec, Exception) else []
     results["txt_records"] = txt_rec if not isinstance(txt_rec, Exception) else []
 
-    # SPF / DMARC analysis from TXT records
+    # SPF / DKIM analysis from TXT records
     txt_list = results.get("txt_records", [])
     results["has_spf"] = any("v=spf1" in t.lower() for t in txt_list)
-    results["has_dmarc"] = any("v=dmarc1" in t.lower() for t in txt_list)
     results["has_dkim_hint"] = any("v=dkim1" in t.lower() for t in txt_list)
+
+    # DMARC analysis from dedicated _dmarc query (RFC 7489)
+    dmarc_data = dmarc_res if isinstance(dmarc_res, dict) else {
+        "has_dmarc": None,
+        "dmarc_record": None,
+        "dmarc_status": "UNAVAILABLE",
+    }
+    results["has_dmarc"] = dmarc_data.get("has_dmarc")
+    results["dmarc_record"] = dmarc_data.get("dmarc_record")
+    results["dmarc_status"] = dmarc_data.get("dmarc_status")
 
     return results
 
@@ -257,3 +267,68 @@ async def _query_ns_records(domain: str) -> list:
 async def _query_txt_records(domain: str) -> list:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _run_dns_query, domain, "TXT")
+
+
+def _run_dmarc_query(domain: str) -> dict:
+    """
+    Query DMARC TXT record adhering to RFC 7489.
+    Queries _dmarc.<domain>, falling back to organizational domain for subdomains.
+    Distinguishes VALID, MISSING, MALFORMED, and UNAVAILABLE.
+    """
+    resolver = dns.resolver.Resolver()
+    resolver.timeout = DNS_TIMEOUT
+    resolver.lifetime = DNS_TIMEOUT
+
+    candidates = [f"_dmarc.{domain}"]
+    ext = tldextract.extract(domain)
+    org_domain = f"{ext.domain}.{ext.suffix}" if ext.suffix else domain
+    if org_domain != domain:
+        candidates.append(f"_dmarc.{org_domain}")
+
+    for candidate in candidates:
+        try:
+            answers = resolver.resolve(candidate, "TXT")
+            for r in answers:
+                txt = "".join(
+                    s.decode("utf-8", errors="replace") if isinstance(s, bytes) else str(s)
+                    for s in getattr(r, "strings", [str(r)])
+                ).strip()
+                if txt.lower().startswith("v=dmarc1"):
+                    return {
+                        "has_dmarc": True,
+                        "dmarc_record": txt,
+                        "dmarc_status": "VALID",
+                    }
+                else:
+                    return {
+                        "has_dmarc": False,
+                        "dmarc_record": txt,
+                        "dmarc_status": "MALFORMED",
+                    }
+        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+            continue
+        except dns.exception.DNSException as e:
+            logger.debug("DMARC DNS lookup error for %s: %s", candidate, str(e))
+            return {
+                "has_dmarc": None,
+                "dmarc_record": None,
+                "dmarc_status": "UNAVAILABLE",
+            }
+        except Exception as e:
+            logger.error("Unexpected error querying DMARC for %s: %s", candidate, str(e))
+            return {
+                "has_dmarc": None,
+                "dmarc_record": None,
+                "dmarc_status": "UNAVAILABLE",
+            }
+
+    return {
+        "has_dmarc": False,
+        "dmarc_record": None,
+        "dmarc_status": "MISSING",
+    }
+
+
+async def _query_dmarc_records(domain: str) -> dict:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _run_dmarc_query, domain)

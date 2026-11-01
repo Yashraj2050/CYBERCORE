@@ -39,83 +39,91 @@ class MessageAnalysisResult:
 
 SCAM_PATTERNS = [
     # OTP / Account Verification Scams
-    (r"otp.*expire|your\s+otp\s+is|share.*otp|send.*otp|verify.*otp", "OTP sharing request", "OTP_FRAUD", 85),
-    (r"never\s+share.*otp|do\s+not\s+share.*otp", None, None, 0),  # Legitimate warning — negative signal
+    (r"\b(?:otp.*expire|your\s+otp\s+is|share.*otp|send.*otp|verify.*otp)\b", "OTP sharing request", "OTP_FRAUD", 85),
+    (r"\b(?:never\s+share.*otp|do\s+not\s+share.*otp)\b", None, None, 0),  # Legitimate warning — negative signal
 
     # KYC Scams (common in India)
-    (r"kyc.*expire|complete.*kyc|kyc.*update|verify.*kyc|kyc.*pending", "KYC urgency scam", "KYC_SCAM", 80),
-    (r"your\s+account\s+will\s+be\s+(blocked|suspended|deactivated|frozen)", "Account suspension threat", "ACCOUNT_THREAT", 75),
+    (r"\b(?:kyc.*expire|complete.*kyc|kyc.*update|verify.*kyc|kyc.*pending)\b", "KYC urgency scam", "KYC_SCAM", 80),
+    (r"\byour\s+account\s+will\s+be\s+(?:blocked|suspended|deactivated|frozen)\b", "Account suspension threat", "ACCOUNT_THREAT", 75),
 
-    # Lottery / Prize Scams
-    (r"you\s+have\s+(won|win|been\s+selected|been\s+chosen)", "Prize/Lottery claim", "LOTTERY_SCAM", 85),
-    (r"congratulations.*winner|prize.*claim|lottery.*winner|lucky\s+draw", "Lottery/prize scam", "LOTTERY_SCAM", 85),
-    (r"claim\s+your\s+(prize|reward|gift|cash|money)", "Prize claim prompt", "LOTTERY_SCAM", 80),
+    # Lottery / Prize Scams (Contextualized to require prize/winner context)
+    (r"\b(?:you\s+have\s+(?:won|win)\b|you\s+have\s+been\s+(?:selected|chosen)\s+(?:as\s+(?:a\s+)?winner|to\s+receive|for\s+(?:a\s+)?(?:cash|prize|reward|gift|lottery|draw|jackpot|free\b)))", "Prize/Lottery claim", "LOTTERY_SCAM", 85),
+    (r"\b(?:congratulations.*winner|prize.*claim|lottery.*winner|lucky\s+draw)\b", "Lottery/prize scam", "LOTTERY_SCAM", 85),
+    (r"\bclaim\s+your\s+(?:prize|reward|gift|cash|money)\b", "Prize claim prompt", "LOTTERY_SCAM", 80),
 
     # Job / Internship Scams
-    (r"work\s+from\s+home.*earn|earn.*per\s+(day|week|hour).*from\s+home", "Work-from-home income scam", "JOB_SCAM", 75),
-    (r"job\s+offer.*no\s+experience|easy\s+(job|money|income|earning)", "Fake job offer", "JOB_SCAM", 70),
-    (r"whatsapp.*job|telegram.*task.*earn|youtube.*like.*earn", "Social media task scam", "TASK_SCAM", 85),
-    (r"part.?time.*earn|internship.*fee|training\s+fee.*job", "Fake internship/job fee", "JOB_SCAM", 80),
+    (r"\b(?:work\s+from\s+home.*earn|earn.*per\s+(?:day|week|hour).*from\s+home)\b", "Work-from-home income scam", "JOB_SCAM", 75),
+    (r"\b(?:job\s+offer.*no\s+experience|easy\s+(?:job|money|income|earning))\b", "Fake job offer", "JOB_SCAM", 70),
+    (r"\b(?:whatsapp.*job|telegram.*task.*earn|youtube.*like.*earn)\b", "Social media task scam", "TASK_SCAM", 85),
+    (r"\b(?:part.?time.*earn|internship.*fee|training\s+fee.*job)\b", "Fake internship/job fee", "JOB_SCAM", 80),
 
     # Investment / Trading Scams
-    (r"guaranteed.*return|100%.*profit|risk.?free.*invest|double.*money", "Guaranteed returns scam", "INVESTMENT_SCAM", 90),
-    (r"crypto.*profit.*guaranteed|forex.*guaranteed|trading.*signal.*profit", "Fake trading signal", "INVESTMENT_SCAM", 85),
-    (r"pay\s+(first|now|today)\s+to\s+(unlock|start|begin|access)", "Advance fee fraud", "ADVANCE_FEE", 85),
+    (r"\b(?:guaranteed.*return|100%.*profit|risk.?free.*invest|double.*money)\b", "Guaranteed returns scam", "INVESTMENT_SCAM", 90),
+    (r"\b(?:crypto.*profit.*guaranteed|forex.*guaranteed|trading.*signal.*profit)\b", "Fake trading signal", "INVESTMENT_SCAM", 85),
+    (r"\bpay\s+(?:first|now|today)\s+to\s+(?:unlock|start|begin|access)\b", "Advance fee fraud", "ADVANCE_FEE", 85),
 
     # Courier / Delivery Scams
-    (r"parcel.*detained|package.*held|customs.*fee.*release|delivery.*fee.*pending", "Courier delivery scam", "COURIER_SCAM", 80),
-    (r"fedex.*package|dhl.*parcel.*customs|courier.*clearance.*pay", "Fake courier notification", "COURIER_SCAM", 75),
+    (r"\b(?:parcel.*detained|package.*held|customs.*fee.*release|delivery.*fee.*pending)\b", "Courier delivery scam", "COURIER_SCAM", 80),
+    (r"\b(?:fedex.*package|dhl.*parcel.*customs|courier.*clearance.*pay)\b", "Fake courier notification", "COURIER_SCAM", 75),
 
     # Phishing Patterns
-    (r"click.*link.*verify|tap.*link.*confirm|follow.*link.*update", "Suspicious link click request", "PHISHING", 70),
-    (r"your\s+password.*expire|reset.*password.*immediately", "Password urgency phishing", "PHISHING", 75),
-    (r"bank.*account.*suspend|credit\s+card.*block|upi.*suspend", "Banking threat phishing", "PHISHING", 80),
+    (r"\b(?:click.*link.*verify|tap.*link.*confirm|follow.*link.*update)\b", "Suspicious link click request", "PHISHING", 70),
+    (r"\b(?:your\s+password.*expire|reset.*password.*immediately)\b", "Password urgency phishing", "PHISHING", 75),
+    (r"\b(?:bank.*account.*suspend|credit\s+card.*block|upi.*suspend)\b", "Banking threat phishing", "PHISHING", 80),
 
-    # Impersonation
-    (r"income\s+tax|it\s+department.*notice|income\s+tax.*refund", "Tax authority impersonation", "IMPERSONATION", 80),
-    (r"police|cyber\s+crime.*notice|cbi.*notice|enforcement.*directorate", "Law enforcement impersonation", "IMPERSONATION", 85),
-    (r"rbi.*guidelines|reserve\s+bank.*india.*notice", "RBI impersonation", "IMPERSONATION", 85),
-    (r"amazon.*gift|flipkart.*winner|google.*reward|microsoft.*winner", "Tech brand impersonation", "IMPERSONATION", 80),
+    # Impersonation Patterns (Contextualized)
+    (r"\b(?:income\s+tax\s+(?:department|notice|refund|penalty|order|investigation)|it\s+department.*(?:notice|refund|order))\b", "Tax authority impersonation", "IMPERSONATION", 80),
+    (r"\b(?:police\s+(?:notice|department|warrant|officer|warning|complaint|summons|case)|cyber\s+crime.*(?:notice|cell|case)|cbi.*(?:notice|officer|case)|enforcement\s+directorate)\b", "Law enforcement impersonation", "IMPERSONATION", 85),
+    (r"\b(?:rbi.*guidelines|reserve\s+bank.*india.*notice)\b", "RBI impersonation", "IMPERSONATION", 85),
+    (r"\b(?:amazon.*gift|flipkart.*winner|google.*reward|microsoft.*winner)\b", "Tech brand impersonation", "IMPERSONATION", 80),
 
     # Generic Urgency
-    (r"urgent|immediate\s+action|act\s+now|limited\s+time|expires?\s+in\s+\d+\s+hour", "Urgency pressure tactic", "URGENCY", 40),
-    (r"final\s+(notice|warning|reminder)|last\s+(chance|opportunity)", "Final warning pressure", "URGENCY", 50),
+    (r"\b(?:urgent|immediate\s+action|act\s+now|limited\s+time|expires?\s+in\s+\d+\s+hours?)\b", "Urgency pressure tactic", "URGENCY", 40),
+    (r"\b(?:final\s+(?:notice|warning|reminder)|last\s+(?:chance|opportunity))\b", "Final warning pressure", "URGENCY", 50),
 ]
 
 MANIPULATION_TACTICS = [
-    (r"urgent|immediately|right\s+now|don'?t\s+wait", "Urgency"),
-    (r"secret|confidential|private.*opportunity|exclusive", "False exclusivity"),
-    (r"fear|warning|danger|serious|consequence", "Fear induction"),
-    (r"limited\s+(time|offer|seats?|spots?)", "Artificial scarcity"),
-    (r"trust\s+me|i\s+promise|guaranteed|100%\s+safe", "False reassurance"),
-    (r"don'?t\s+tell|keep\s+this\s+between|don'?t\s+share\s+this", "Secrecy request"),
+    (r"\b(?:urgent|immediately|right\s+now|don'?t\s+wait)\b", "Urgency"),
+    (r"\b(?:secret|confidential|private.*opportunity|exclusive)\b", "False exclusivity"),
+    (r"\b(?:fear|warning|danger|serious|consequence)\b", "Fear induction"),
+    (r"\blimited\s+(?:time|offer|seats?|spots?)\b", "Artificial scarcity"),
+    (r"\b(?:trust\s+me|i\s+promise|guaranteed|100%\s+safe)\b", "False reassurance"),
+    (r"\b(?:don'?t\s+tell|keep\s+this\s+between|don'?t\s+share\s+this)\b", "Secrecy request"),
 ]
 
+# Impersonation targets with strict word boundaries and disambiguation
 KNOWN_IMPERSONATION_TARGETS = {
-    r"amazon": "Amazon",
-    r"flipkart": "Flipkart",
-    r"google": "Google",
-    r"microsoft": "Microsoft",
-    r"apple": "Apple",
-    r"paypal": "PayPal",
-    r"paytm": "Paytm",
-    r"phonepe": "PhonePe",
-    r"gpay|google\s+pay": "Google Pay",
-    r"state\s+bank|sbi": "State Bank of India",
-    r"hdfc": "HDFC Bank",
-    r"icici": "ICICI Bank",
-    r"axis\s+bank": "Axis Bank",
-    r"income\s+tax|it\s+department": "Income Tax Department",
-    r"reserve\s+bank|rbi": "Reserve Bank of India",
-    r"police|cbi|ed\s+": "Law Enforcement Agency",
-    r"fedex|dhl|bluedart": "Courier Company",
-    r"irdai": "IRDAI",
-    r"trai": "TRAI",
-    r"sebi": "SEBI",
+    r"\bamazon\b": "Amazon",
+    r"\bflipkart\b": "Flipkart",
+    r"\bgoogle\b": "Google",
+    r"\bmicrosoft\b": "Microsoft",
+    r"\bapple\b": "Apple",
+    r"\bpaypal\b": "PayPal",
+    r"\bpaytm\b": "Paytm",
+    r"\bphonepe\b": "PhonePe",
+    r"\b(?:gpay|google\s+pay)\b": "Google Pay",
+    r"\b(?:state\s+bank(?:\s+of\s+india)?|sbi)\b": "State Bank of India",
+    r"\bhdfc(?:\s+bank)?\b": "HDFC Bank",
+    r"\bicici(?:\s+bank)?\b": "ICICI Bank",
+    r"\baxis\s+bank\b": "Axis Bank",
+    r"\b(?:income\s+tax\s+(?:department|notice|refund|order|summons|demand|officer|inquiry)|it\s+department\s+(?:notice|refund|order))\b": "Income Tax Department",
+    r"\b(?:reserve\s+bank(?:\s+of\s+india)?|rbi)\s+(?:notice|guidelines?|order|directive)\b": "Reserve Bank of India",
+    # Fixed: ed\s+ replaced with explicit word boundaries and enforcement directorate contexts
+    r"\b(?:police|cbi|enforcement\s+directorate|ed\s+(?:notice|summons|raid|case|department|officer|investigation|inquiry))\b": "Law Enforcement Agency",
+    r"\b(?:fedex|dhl|bluedart)\b": "Courier Company",
+    r"\birdai\b": "IRDAI",
+    # Fixed: Bound trai with word boundaries to prevent matching 'training'
+    r"\btrai\b": "TRAI",
+    r"\bsebi\b": "SEBI",
 }
 
 URL_PATTERN = re.compile(
     r"https?://[^\s<>\"{}|\\^`\[\]]+|www\.[^\s<>\"{}|\\^`\[\]]+"
+)
+
+# Pretext patterns that make a brand mention suspicious even without explicit scam rule
+BRAND_PRETEXT_PATTERN = re.compile(
+    r"\b(?:security\s+alert|fraud\s+alert|unauthorized\s+access|account\s+(?:locked|blocked|suspended|compromised)|verify\s+(?:identity|password|pin|details)|update\s+(?:kyc|payment\s+method)|official\s+notice)\b"
 )
 
 
@@ -180,24 +188,33 @@ def analyze_message(message_text: str) -> MessageAnalysisResult:
         if re.search(pattern, text_lower):
             tactics_found.append(tactic_name)
 
-    # ── Impersonation detection ───────────────────────────────
+    # ── Impersonation detection with contextual separation ───
     impersonation_targets = []
+    has_suspicious_signals = bool(indicators or urls_found or tactics_found)
+
     for pattern, target_name in KNOWN_IMPERSONATION_TARGETS.items():
         if re.search(pattern, text_lower):
-            impersonation_targets.append(target_name)
-            indicators.append({
-                "type": "impersonation",
-                "description": f"Possible impersonation of: {target_name}",
-                "severity": 65,
-            })
-            max_score = max(max_score, 65)
+            # Check if brand appears in suspicious context or has other adverse signals
+            has_pretext = bool(BRAND_PRETEXT_PATTERN.search(text_lower))
+            if has_suspicious_signals or has_pretext or target_name in ["Law Enforcement Agency", "Income Tax Department", "Reserve Bank of India"]:
+                impersonation_targets.append(target_name)
+                indicators.append({
+                    "type": "impersonation",
+                    "description": f"Possible impersonation of: {target_name}",
+                    "severity": 65,
+                })
+                max_score = max(max_score, 65)
 
     # ── Score adjustments ─────────────────────────────────────
-    # Multiple strong indicators amplify the score
-    strong_indicators = [i for i in indicators if i.get("severity", 0) >= 70]
-    if len(strong_indicators) >= 3:
+    # De-duplicate strong indicators by distinct category to prevent stacking
+    distinct_strong_categories = set(
+        i.get("scam_type") or i.get("description")
+        for i in indicators
+        if i.get("severity", 0) >= 70
+    )
+    if len(distinct_strong_categories) >= 3:
         max_score = min(max_score + 15, 98)
-    elif len(strong_indicators) >= 2:
+    elif len(distinct_strong_categories) >= 2:
         max_score = min(max_score + 8, 98)
 
     # Add urgency tactics to score

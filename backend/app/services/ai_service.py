@@ -89,8 +89,8 @@ async def generate_ai_response(prompt: str, chat_history: Optional[List[Dict[str
     """Generate intelligent response using LLM or fallback knowledge base."""
     clean_prompt = prompt.strip().lower()
 
-    # Try Gemini if key is provided
-    if settings.gemini_api_key:
+    # Try Gemini if key is provided and valid
+    if settings.gemini_api_key and not settings.gemini_api_key.startswith("your-"):
         try:
             import google.generativeai as genai
             genai.configure(api_key=settings.gemini_api_key)
@@ -104,8 +104,8 @@ async def generate_ai_response(prompt: str, chat_history: Optional[List[Dict[str
         except Exception as e:
             logger.warning("Gemini AI API error: %s; falling back to knowledge base", str(e))
 
-    # Try OpenAI if key is provided
-    if settings.openai_api_key:
+    # Try OpenAI if key is provided and valid
+    if settings.openai_api_key and not settings.openai_api_key.startswith("your-"):
         try:
             from openai import AsyncOpenAI
             client = AsyncOpenAI(api_key=settings.openai_api_key)
