@@ -16,7 +16,9 @@ CRITICAL SECURITY DESIGN:
 
 import httpx
 import logging
-from fastapi import APIRouter, HTTPException, Path
+from fastapi import APIRouter, HTTPException, Path, Request
+
+from app.limiter import limiter
 
 router = APIRouter(prefix="/password", tags=["Password Security"])
 logger = logging.getLogger(__name__)
@@ -29,7 +31,9 @@ HTTP_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
     "/breached/{hash_prefix}",
     summary="Check if a password hash prefix appears in HIBP breach database",
 )
+@limiter.limit("60/minute")
 async def check_password_breach(
+    request: Request,
     hash_prefix: str = Path(
         ...,
         min_length=5,

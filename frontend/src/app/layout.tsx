@@ -25,12 +25,11 @@ export const metadata: Metadata = {
 };
 
 // Inline script to prevent theme flash (FOUC)
-const themeInitializerScript = `
+const clientRuntimeBootstrapScript = `
   (function() {
     try {
       var stored = localStorage.getItem('cybercore_theme');
-      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      var activeTheme = stored === 'light' || stored === 'dark' ? stored : (prefersDark ? 'dark' : 'light');
+      var activeTheme = stored === 'light' ? 'light' : 'dark';
       var root = document.documentElement;
       if (activeTheme === 'dark') {
         root.classList.add('dark');
@@ -56,7 +55,7 @@ export default function RootLayout({
     >
       <head>
         <script
-          dangerouslySetInnerHTML={{ __html: themeInitializerScript }}
+          dangerouslySetInnerHTML={{ __html: clientRuntimeBootstrapScript }}
         />
       </head>
       <body className="min-h-screen bg-cyber-bg text-cyber-text-primary font-sans antialiased selection:bg-cyber-accent/20 selection:text-white">

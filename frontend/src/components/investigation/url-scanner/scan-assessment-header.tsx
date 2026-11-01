@@ -18,6 +18,7 @@ import {
   Unlock,
   AlertOctagon,
   ArrowUpRight,
+  Info,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { UrlScanResult } from "@/types/scanner";
@@ -28,6 +29,7 @@ interface ScanAssessmentHeaderProps {
 
 export function ScanAssessmentHeader({ scan }: ScanAssessmentHeaderProps) {
   const [copiedId, setCopiedId] = React.useState(false);
+  const [copiedUrl, setCopiedUrl] = React.useState(false);
 
   const copyScanId = () => {
     navigator.clipboard.writeText(scan.scan_id);
@@ -35,13 +37,29 @@ export function ScanAssessmentHeader({ scan }: ScanAssessmentHeaderProps) {
     setTimeout(() => setCopiedId(false), 2000);
   };
 
+  const copyTargetUrl = () => {
+    navigator.clipboard.writeText(scan.url);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
+  };
+
   // Determine risk category styles and labels directly from backend contract
   const numericScore = typeof scan.risk_score === "number" ? scan.risk_score : null;
   const isScoreAvailable = numericScore !== null;
   const isConfidenceUnavailable = scan.confidence === "UNAVAILABLE";
   const rawCategory = (scan.risk_category || "UNKNOWN").toUpperCase();
-  const isUnassessed = isConfidenceUnavailable || !isScoreAvailable;
-  const riskCategory = isUnassessed ? "UNASSESSED" : rawCategory;
+  const isUnassessed = isConfidenceUnavailable || !isScoreAvailable || rawCategory === "INSUFFICIENT_EVIDENCE" || rawCategory === "UNVERIFIED";
+  const riskCategory = isUnassessed ? (rawCategory === "INSUFFICIENT_EVIDENCE" ? "INSUFFICIENT_EVIDENCE" : "UNASSESSED") : rawCategory;
+
+  const isDangerousTarget =
+    riskCategory === "CRITICAL" ||
+    riskCategory === "MALICIOUS" ||
+    riskCategory === "HIGH_RISK" ||
+    riskCategory === "HIGH" ||
+    scan.is_malware === true ||
+    scan.is_phishing === true ||
+    scan.malware_status === "SUSPECTED_MALWARE" ||
+    scan.phishing_status === "SUSPECTED_PHISHING";
 
   const getProgressBarColor = () => {
     if (numericScore === null) return "bg-cyber-text-dim";
@@ -56,16 +74,24 @@ export function ScanAssessmentHeader({ scan }: ScanAssessmentHeaderProps) {
 
   const getRiskVariant = (category: string) => {
     switch (category) {
+      case "MALICIOUS":
       case "CRITICAL":
         return "critical";
+      case "HIGH_RISK":
       case "HIGH":
         return "high";
+      case "SUSPICIOUS":
       case "MODERATE":
         return "medium";
+      case "LOW_RISK":
       case "MODERATE_LOW":
-        return "low";
       case "LOW":
+        return "low";
+      case "NO_KNOWN_THREATS":
+      case "CLEAN":
         return "secure";
+      case "INSUFFICIENT_EVIDENCE":
+      case "UNVERIFIED":
       case "UNASSESSED":
       default:
         return "outline";
@@ -171,27 +197,60 @@ export function ScanAssessmentHeader({ scan }: ScanAssessmentHeaderProps) {
                 <span className="text-cyber-accent">UNKNOWN</span>
               )}
             </div>
-            <div className="flex items-center gap-2 break-all">
-              <a
-                href={scan.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-base sm:text-lg md:text-xl font-mono font-medium text-cyber-text-primary hover:text-cyber-accent transition-colors flex items-center gap-2 group"
+            <div className="flex flex-wrap items-center gap-2 break-all">
+              {isDangerousTarget ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-base sm:text-lg md:text-xl font-mono font-medium text-cyber-threat-critical bg-cyber-threat-critical-bg/50 px-2.5 py-1 border border-cyber-threat-critical-border">
+                    {scan.url}
+                  </span>
+                  <Badge variant="critical" className="text-[10px] uppercase tracking-wider py-0.5">
+                    DIRECT NAVIGATION DISABLED (UNSAFE TARGET)
+                  </Badge>
+                </div>
+              ) : (
+                <a
+                  href={scan.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-base sm:text-lg md:text-xl font-mono font-medium text-cyber-text-primary hover:text-cyber-accent transition-colors flex items-center gap-2 group"
+                >
+                  <span>{scan.url}</span>
+                  <ExternalLink className="h-3.5 w-3.5 text-cyber-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={copyTargetUrl}
+                className="text-cyber-text-muted hover:text-cyber-text-primary transition-colors p-1.5 border border-cyber-border bg-cyber-bg-secondary hover:bg-cyber-bg-surface flex items-center gap-1 text-[11px] font-mono shrink-0"
+                title="Copy Target URL to clipboard"
               >
-                <span>{scan.url}</span>
-                <ExternalLink className="h-3.5 w-3.5 text-cyber-text-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-              </a>
+                {copiedUrl ? (
+                  <>
+                    <Check className="h-3 w-3 text-cyber-threat-secure" />
+                    <span className="text-cyber-threat-secure">COPIED</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3 w-3" />
+                    <span>COPY URL</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
           {/* Key Boolean Indicators Pill Strip */}
           <div className="flex flex-wrap items-center gap-2 pt-2">
             {/* Phishing Flag */}
-            {scan.is_phishing === true ? (
+            {scan.phishing_status === "CONFIRMED_PHISHING" || scan.is_phishing === true ? (
               <Badge variant="critical" className="gap-1 px-2.5 py-1">
-                <AlertOctagon className="h-3 w-3" /> PHISHING DETECTED
+                <AlertOctagon className="h-3 w-3" /> PHISHING CONFIRMED
               </Badge>
-            ) : scan.is_phishing === false ? (
+            ) : scan.phishing_status === "SUSPECTED_PHISHING" ? (
+              <Badge variant="high" className="gap-1 px-2.5 py-1">
+                <AlertTriangle className="h-3 w-3" /> SUSPECTED PHISHING
+              </Badge>
+            ) : scan.phishing_status === "NO_KNOWN_DETECTION" || scan.is_phishing === false ? (
               <Badge variant="secure" className="gap-1 px-2.5 py-1">
                 <ShieldCheck className="h-3 w-3" /> NO PHISHING PATTERNS
               </Badge>
@@ -202,11 +261,15 @@ export function ScanAssessmentHeader({ scan }: ScanAssessmentHeaderProps) {
             )}
 
             {/* Malware Flag */}
-            {scan.is_malware === true ? (
+            {scan.malware_status === "CONFIRMED_MALWARE" || scan.is_malware === true ? (
               <Badge variant="critical" className="gap-1 px-2.5 py-1">
                 <AlertTriangle className="h-3 w-3" /> MALWARE CONFIRMED
               </Badge>
-            ) : scan.is_malware === false ? (
+            ) : scan.malware_status === "SUSPECTED_MALWARE" ? (
+              <Badge variant="high" className="gap-1 px-2.5 py-1">
+                <AlertTriangle className="h-3 w-3" /> SUSPECTED PAYLOAD / MALWARE
+              </Badge>
+            ) : scan.malware_status === "NO_KNOWN_DETECTION" || scan.is_malware === false ? (
               <Badge variant="secure" className="gap-1 px-2.5 py-1">
                 <ShieldCheck className="h-3 w-3" /> NO MALWARE SIGNATURES
               </Badge>
@@ -291,7 +354,15 @@ export function ScanAssessmentHeader({ scan }: ScanAssessmentHeaderProps) {
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-mono uppercase text-cyber-text-dim tracking-wider">VERDICT</span>
               <Badge variant={getRiskVariant(riskCategory)} className="text-xs px-2.5 py-1">
-                {isUnassessed ? "UNASSESSED TARGET" : `${riskCategory.replace(/_/g, "-")} THREAT`}
+                {riskCategory === "INSUFFICIENT_EVIDENCE"
+                  ? "INSUFFICIENT EVIDENCE"
+                  : riskCategory === "HIGH_RISK"
+                  ? "HIGH RISK TARGET"
+                  : riskCategory === "LOW_RISK"
+                  ? "LOW RISK TARGET"
+                  : riskCategory === "UNASSESSED" || riskCategory === "UNVERIFIED"
+                  ? "UNASSESSED TARGET"
+                  : `${riskCategory.replace(/_/g, "-")} THREAT`}
               </Badge>
             </div>
 
@@ -303,6 +374,28 @@ export function ScanAssessmentHeader({ scan }: ScanAssessmentHeaderProps) {
               />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Explicit Security & Coverage Notice */}
+      <div className="p-3.5 bg-cyber-bg-secondary border border-cyber-border text-[11px] font-mono text-cyber-text-secondary flex items-start gap-2.5">
+        <Info className="h-4 w-4 text-cyber-accent shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-cyber-text-primary uppercase text-[10px] tracking-wider">
+              EVALUATION BOUNDARY & SECURITY NOTICE
+            </span>
+            <Badge variant="monolithic" className="text-[9px]">
+              {scan.coverage_percent || 0}% SUBSYSTEM COVERAGE
+            </Badge>
+          </div>
+          <p className="text-cyber-text-muted leading-relaxed text-[11px]">
+            Composite risk index is calculated strictly from {scan.coverage_percent || 0}% active verification subsystems
+            {scan.unavailable_checks && scan.unavailable_checks.length > 0 ? (
+              <> ({scan.unavailable_checks.length} unavailable check{scan.unavailable_checks.length > 1 ? "s" : ""}: <span className="text-cyber-threat-medium font-semibold">{scan.unavailable_checks.join(", ")}</span>)</>
+            ) : " (all checks online)"}.
+            An evaluation score of zero or absence of heuristic detections does <strong className="text-cyber-text-primary font-semibold">not</strong> guarantee that the destination is harmless. Never treat unavailable detection engines as proof of safety.
+          </p>
         </div>
       </div>
     </div>

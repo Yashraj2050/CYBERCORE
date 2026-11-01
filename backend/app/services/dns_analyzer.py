@@ -78,29 +78,43 @@ async def analyze_dns(domain: str) -> dict:
 
 async def get_domain_rdap(domain: str) -> dict:
     """
-    Fetch domain registration info via RDAP.
+    Fetch domain or IP registration info via RDAP.
     RDAP provides structured JSON — more reliable than WHOIS.
     """
-    ext = tldextract.extract(domain)
-    registered_domain = f"{ext.domain}.{ext.suffix}" if ext.suffix else domain
+    import ipaddress
+    is_ip = False
+    try:
+        ipaddress.ip_address(domain)
+        is_ip = True
+    except ValueError:
+        is_ip = False
+
+    if is_ip:
+        rdap_url = f"https://rdap.org/ip/{domain}"
+    else:
+        ext = tldextract.extract(domain)
+        registered_domain = f"{ext.domain}.{ext.suffix}" if ext.suffix else domain
+        rdap_url = f"{RDAP_BOOTSTRAP_URL}{registered_domain}"
 
     try:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
             resp = await client.get(
-                f"{RDAP_BOOTSTRAP_URL}{registered_domain}",
+                rdap_url,
                 follow_redirects=True,
             )
         if resp.status_code != 200:
-            return {"error": f"RDAP returned status {resp.status_code}"}
+            return {"error": f"RDAP returned status {resp.status_code}", "is_ip": is_ip}
 
         data = resp.json()
-        return _parse_rdap_response(data)
+        parsed = _parse_rdap_response(data)
+        parsed["is_ip"] = is_ip
+        return parsed
 
     except httpx.TimeoutException:
-        return {"error": "RDAP request timed out"}
+        return {"error": "RDAP request timed out", "is_ip": is_ip}
     except Exception as e:
         logger.error("RDAP error for %s: %s", domain, str(e))
-        return {"error": f"RDAP unavailable: {type(e).__name__}"}
+        return {"error": f"RDAP unavailable: {type(e).__name__}", "is_ip": is_ip}
 
 
 def _parse_rdap_response(data: dict) -> dict:
@@ -158,27 +172,40 @@ async def build_domain_reputation_score(domain: str, rdap_data: dict) -> Compone
     """
     Build a domain reputation score based on DNS and RDAP data.
     """
+    import ipaddress
+    is_ip = False
+    try:
+        ipaddress.ip_address(domain)
+        is_ip = True
+    except ValueError:
+        is_ip = False
+
     issues = []
     score = 0
+    domain_age_days = None
 
-    domain_age_days = rdap_data.get("domain_age_days")
-
-    if domain_age_days is not None:
-        if domain_age_days < 7:
-            score += 70
-            issues.append(f"Domain registered only {domain_age_days} days ago (very new)")
-        elif domain_age_days < 30:
-            score += 50
-            issues.append(f"Domain registered {domain_age_days} days ago (recently registered)")
-        elif domain_age_days < 90:
-            score += 25
-            issues.append(f"Domain registered {domain_age_days} days ago (relatively new)")
-        elif domain_age_days < 365:
-            score += 10
+    if is_ip:
+        score += 25
+        issues.append("Direct IP address host — no registered domain name or registrar trust")
     else:
-        # Cannot determine age — slight uncertainty
-        score += 10
-        issues.append("Could not determine domain registration date")
+        domain_age_days = rdap_data.get("domain_age_days")
+
+        if domain_age_days is not None:
+            if domain_age_days < 7:
+                score += 70
+                issues.append(f"Domain registered only {domain_age_days} days ago (very new)")
+            elif domain_age_days < 30:
+                score += 50
+                issues.append(f"Domain registered {domain_age_days} days ago (recently registered)")
+            elif domain_age_days < 90:
+                score += 25
+                issues.append(f"Domain registered {domain_age_days} days ago (relatively new)")
+            elif domain_age_days < 365:
+                score += 10
+        else:
+            # Cannot determine age — slight uncertainty
+            score += 10
+            issues.append("Could not determine domain registration date")
 
     # Check nameserver reputation
     ns_list = rdap_data.get("nameservers", [])

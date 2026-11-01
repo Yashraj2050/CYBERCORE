@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Globe, Search, X, Loader2, ArrowRight, Shield, Sparkles } from "lucide-react";
+import { Globe, Search, X, Loader2, ArrowRight, Shield, Sparkles, Hash, Database } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import type { ScanMode } from "@/types/scanner";
 
 interface UrlScannerFormProps {
   url: string;
@@ -12,6 +13,8 @@ interface UrlScannerFormProps {
   isLoading: boolean;
   onReset: () => void;
   onSelectPreset?: (presetUrl: string) => void;
+  mode?: ScanMode;
+  onModeChange?: (mode: ScanMode) => void;
 }
 
 const PRESET_TARGETS = [
@@ -28,22 +31,51 @@ export function UrlScannerForm({
   isLoading,
   onReset,
   onSelectPreset,
+  mode = "scan",
+  onModeChange,
 }: UrlScannerFormProps) {
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
   const validateInput = (value: string): boolean => {
     const trimmed = value.trim();
     if (!trimmed) {
-      setValidationError("Target URL or IP address is required.");
+      setValidationError(
+        mode === "lookup_id"
+          ? "Scan ID is required."
+          : mode === "lookup_domain"
+          ? "Domain name is required."
+          : "Target URL or IP address is required."
+      );
       return false;
     }
 
+    if (mode === "lookup_id") {
+      if (trimmed.length < 8) {
+        setValidationError("Scan ID must be a valid identifier (e.g., UUID).");
+        return false;
+      }
+      setValidationError(null);
+      return true;
+    }
+
+    if (mode === "lookup_domain") {
+      let clean = trimmed;
+      if (clean.includes("://")) clean = clean.split("://")[1] || clean;
+      if (clean.includes("/")) clean = clean.split("/")[0] || clean;
+      if (!clean.includes(".")) {
+        setValidationError("Please enter a valid domain name (e.g., example.com).");
+        return false;
+      }
+      setValidationError(null);
+      return true;
+    }
+
+    // Default URL validation mode
     if (trimmed.includes("://") && !trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
       setValidationError("Unsupported protocol. Only HTTP and HTTPS schemes are supported.");
       return false;
     }
 
-    // Check basic URL format
     if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
       setValidationError("URL must include protocol scheme (http:// or https://).");
       return false;
@@ -67,9 +99,7 @@ export function UrlScannerForm({
     const val = e.target.value;
     onUrlChange(val);
     if (validationError && val.trim()) {
-      if (val.startsWith("http://") || val.startsWith("https://")) {
-        setValidationError(null);
-      }
+      setValidationError(null);
     }
   };
 
@@ -78,9 +108,16 @@ export function UrlScannerForm({
     if (isLoading) return;
 
     let target = url.trim();
-    // Only auto-prepend https:// if no protocol scheme exists at all
-    if (target && !target.includes("://")) {
-      target = `https://${target}`;
+    if (mode === "scan") {
+      // Auto-prepend https:// if no protocol scheme exists at all
+      if (target && !target.includes("://")) {
+        target = `https://${target}`;
+        onUrlChange(target);
+      }
+    } else if (mode === "lookup_domain") {
+      // Strip scheme/path if user entered a full URL
+      if (target.includes("://")) target = target.split("://")[1] || target;
+      if (target.includes("/")) target = target.split("/")[0] || target;
       onUrlChange(target);
     }
 
@@ -100,11 +137,73 @@ export function UrlScannerForm({
 
   return (
     <div className="space-y-4">
+      {/* Mode Switcher Tabs */}
+      {onModeChange && (
+        <div className="flex items-center gap-1 border-b border-cyber-border pb-2 text-xs font-mono">
+          <button
+            type="button"
+            onClick={() => {
+              onModeChange("scan");
+              setValidationError(null);
+            }}
+            disabled={isLoading}
+            className={`px-3 py-1 text-[11px] uppercase tracking-wider transition-colors border ${
+              mode === "scan"
+                ? "border-cyber-accent text-cyber-accent bg-cyber-accent-subtle"
+                : "border-transparent text-cyber-text-dim hover:text-cyber-text-primary"
+            }`}
+          >
+            <Globe className="h-3 w-3 inline mr-1.5" />
+            LIVE URL SCAN
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onModeChange("lookup_id");
+              setValidationError(null);
+            }}
+            disabled={isLoading}
+            className={`px-3 py-1 text-[11px] uppercase tracking-wider transition-colors border ${
+              mode === "lookup_id"
+                ? "border-cyber-accent text-cyber-accent bg-cyber-accent-subtle"
+                : "border-transparent text-cyber-text-dim hover:text-cyber-text-primary"
+            }`}
+          >
+            <Hash className="h-3 w-3 inline mr-1.5" />
+            LOOKUP BY SCAN ID
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              onModeChange("lookup_domain");
+              setValidationError(null);
+            }}
+            disabled={isLoading}
+            className={`px-3 py-1 text-[11px] uppercase tracking-wider transition-colors border ${
+              mode === "lookup_domain"
+                ? "border-cyber-accent text-cyber-accent bg-cyber-accent-subtle"
+                : "border-transparent text-cyber-text-dim hover:text-cyber-text-primary"
+            }`}
+          >
+            <Database className="h-3 w-3 inline mr-1.5" />
+            LOOKUP BY DOMAIN
+          </button>
+        </div>
+      )}
+
       {/* Search Input Box */}
       <form onSubmit={handleSubmit} className="relative">
         <div className="relative flex items-center rounded-none border border-cyber-border-strong bg-cyber-bg-secondary p-1 shadow-inner focus-within:border-cyber-accent focus-within:ring-1 focus-within:ring-cyber-accent/40 transition-all">
           <div className="flex items-center pl-3 pr-2 text-cyber-text-muted">
-            <Globe className="h-4 w-4 shrink-0 text-cyber-accent" />
+            {mode === "lookup_id" ? (
+              <Hash className="h-4 w-4 shrink-0 text-cyber-accent" />
+            ) : mode === "lookup_domain" ? (
+              <Database className="h-4 w-4 shrink-0 text-cyber-accent" />
+            ) : (
+              <Globe className="h-4 w-4 shrink-0 text-cyber-accent" />
+            )}
           </div>
 
           <input
@@ -113,7 +212,13 @@ export function UrlScannerForm({
             type="text"
             value={url}
             onChange={handleChange}
-            placeholder="Enter target URL or IP (e.g. https://1.1.1.1 or https://example.com)..."
+            placeholder={
+              mode === "lookup_id"
+                ? "Enter 36-char scan UUID (e.g. 97aa2ba2-19a8-47c0-83d8-b03ba6028689)..."
+                : mode === "lookup_domain"
+                ? "Enter domain name to retrieve cached scan (e.g. example.com)..."
+                : "Enter target URL or IP (e.g. https://1.1.1.1 or https://example.com)..."
+            }
             disabled={isLoading}
             className="w-full bg-transparent px-2 py-2 text-xs md:text-sm font-mono text-cyber-text-primary placeholder:text-cyber-text-dim focus:outline-none disabled:opacity-50"
             autoComplete="off"
@@ -142,12 +247,18 @@ export function UrlScannerForm({
               {isLoading ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>Inspecting...</span>
+                  <span>{mode === "scan" ? "Inspecting..." : "Retrieving..."}</span>
                 </>
               ) : (
                 <>
                   <Search className="h-3.5 w-3.5" />
-                  <span>Scan Target</span>
+                  <span>
+                    {mode === "lookup_id"
+                      ? "Lookup ID"
+                      : mode === "lookup_domain"
+                      ? "Lookup Domain"
+                      : "Scan Target"}
+                  </span>
                   <ArrowRight className="h-3.5 w-3.5 ml-0.5" />
                 </>
               )}
@@ -159,7 +270,7 @@ export function UrlScannerForm({
         {validationError && (
           <div className="mt-2 flex items-center justify-between text-[11px] font-mono text-cyber-threat-high">
             <span>{validationError}</span>
-            {!url.startsWith("http://") && !url.startsWith("https://") && url.trim().length > 0 && (
+            {mode === "scan" && !url.startsWith("http://") && !url.startsWith("https://") && url.trim().length > 0 && (
               <button
                 type="button"
                 onClick={handleQuickProtocol}
@@ -174,30 +285,37 @@ export function UrlScannerForm({
 
       {/* Target Presets & Security Notice */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-1 text-xs font-mono">
-        {/* Preset quick buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[10px] uppercase text-cyber-text-dim tracking-wider flex items-center gap-1">
-            <Sparkles className="h-3 w-3 text-cyber-accent" /> Test Targets:
-          </span>
-          {PRESET_TARGETS.map((preset) => (
-            <button
-              key={preset.url}
-              type="button"
-              disabled={isLoading}
-              onClick={() => {
-                if (onSelectPreset) {
-                  onSelectPreset(preset.url);
-                } else {
-                  onUrlChange(preset.url);
-                  setValidationError(null);
-                }
-              }}
-              className="px-2 py-0.5 text-[10px] font-mono tracking-tight bg-cyber-bg-surface border border-cyber-border hover:border-cyber-accent/60 hover:text-cyber-accent text-cyber-text-secondary transition-colors"
-            >
-              {preset.label}
-            </button>
-          ))}
-        </div>
+        {mode === "scan" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] uppercase text-cyber-text-dim tracking-wider flex items-center gap-1">
+              <Sparkles className="h-3 w-3 text-cyber-accent" /> Test Targets:
+            </span>
+            {PRESET_TARGETS.map((preset) => (
+              <button
+                key={preset.url}
+                type="button"
+                disabled={isLoading}
+                onClick={() => {
+                  if (onSelectPreset) {
+                    onSelectPreset(preset.url);
+                  } else {
+                    onUrlChange(preset.url);
+                    setValidationError(null);
+                  }
+                }}
+                className="px-2 py-0.5 text-[10px] font-mono tracking-tight bg-cyber-bg-surface border border-cyber-border hover:border-cyber-accent/60 hover:text-cyber-accent text-cyber-text-secondary transition-colors"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-[10px] text-cyber-text-dim">
+            {mode === "lookup_id"
+              ? "Queries FastAPI in-memory cache by UUID scan identifier."
+              : "Queries FastAPI in-memory cache for latest recorded scan of domain."}
+          </div>
+        )}
 
         {/* SSRF & Defense note */}
         <div className="flex items-center gap-1.5 text-[10px] text-cyber-text-dim">

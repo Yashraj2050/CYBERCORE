@@ -11,18 +11,21 @@ Sets up FastAPI with:
 
 import logging
 import time
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import get_settings
+from app.limiter import limiter
 from app.routers import scan, password, messages, ip_domain, files, ai_chat, dashboard
+from app.services.report_store import report_store
+from app.utils.security import get_client_ip
 
 settings = get_settings()
 logging.basicConfig(
@@ -31,19 +34,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────────
-# Rate Limiter
-# ─────────────────────────────────────────────────────────────
-limiter = Limiter(
-    key_func=get_remote_address,
-    default_limits=[f"{settings.rate_limit_per_minute}/minute"],
-)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("CYBERCORE backend starting up...")
     logger.info("Environment: %s", settings.app_env)
+
+    # Production safety gate: never allow placeholder secret in production
+    if settings.app_env == "production":
+        if settings.app_secret_key in {"CHANGE_ME_IN_PRODUCTION", ""}:
+            raise RuntimeError(
+                "FATAL: Default APP_SECRET_KEY cannot be used in production! "
+                "Provide a cryptographically secure key via APP_SECRET_KEY."
+            )
+        if not settings.admin_api_key:
+            logger.warning(
+                "SECURITY WARNING: ADMIN_API_KEY is not configured in production. "
+                "All administrative moderation and backup endpoints will be locked."
+            )
+
+    db_healthy, db_msg, db_meta = report_store.check_health()
+    if not db_healthy:
+        logger.error("FATAL: Database health check failed on startup: %s", db_msg)
+    else:
+        logger.info("Database initialized successfully: %s (Mode: %s)", report_store.db_path, db_meta.get("mode"))
+
     logger.info("VirusTotal: %s", "configured" if settings.virustotal_api_key else "NOT configured")
     logger.info("Google Safe Browsing: %s", "configured" if settings.google_safe_browsing_api_key else "NOT configured")
     logger.info("AI Provider: %s (%s)", settings.ai_provider, settings.ai_model)
@@ -84,25 +99,47 @@ app.add_middleware(SlowAPIMiddleware)
 
 
 @app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    """Add security headers to all responses."""
-    start_time = time.time()
+async def operational_telemetry_and_security(request: Request, call_next):
+    """
+    Structured operational telemetry, request tracing, and security headers.
+    Captures: Request ID, Method, Path, Client IP, Status, and Execution Duration.
+    Never logs sensitive payloads, credentials, or file bytes.
+    """
+    # 1. Tracing Request ID
+    req_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+    request.state.request_id = req_id
+
+    # 2. Timing
+    start_time = time.perf_counter()
+    client_ip = get_client_ip(request)
+
     response = await call_next(request)
 
-    # Security headers
+    duration_ms = (time.perf_counter() - start_time) * 1000.0
+
+    # 3. Security headers
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["X-Request-ID"] = req_id
+    response.headers["X-Response-Time"] = f"{duration_ms:.2f}ms"
 
     # Remove server identification
     if "server" in response.headers:
         del response.headers["server"]
 
-    # Request timing
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = f"{process_time:.3f}"
+    # 4. Structured operational log entry
+    logger.info(
+        "ACCESS | id=%s ip=%s method=%s path=%s status=%d duration=%.2fms",
+        req_id,
+        client_ip,
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
 
     return response
 
@@ -126,30 +163,58 @@ app.include_router(dashboard.router, prefix=API_PREFIX)
 # ─────────────────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error("Unhandled exception: %s %s — %s", request.method, request.url, str(exc), exc_info=True)
+    req_id = getattr(request.state, "request_id", "unknown")
+    logger.error("Unhandled exception [id=%s]: %s %s — %s", req_id, request.method, request.url, str(exc), exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "An internal error occurred. Please try again."},
+        content={"detail": "An internal error occurred. Please try again.", "request_id": req_id},
     )
 
 
 # ─────────────────────────────────────────────────────────────
-# Health Check
+# Production-Grade Health & Dependency Check
 # ─────────────────────────────────────────────────────────────
 @app.get("/api/health", tags=["Health"])
 async def health_check():
-    """Health check endpoint for monitoring."""
-    return {
-        "status": "healthy",
+    """
+    Comprehensive system health monitor distinguishing:
+      1. Application web process availability
+      2. Database storage availability & integrity
+      3. External intelligence service configurations
+    """
+    db_healthy, db_msg, db_meta = report_store.check_health()
+
+    overall_status = "healthy" if db_healthy else "unhealthy"
+    status_code = status.HTTP_200_OK if db_healthy else status.HTTP_503_SERVICE_UNAVAILABLE
+
+    payload = {
+        "status": overall_status,
         "service": "CYBERCORE API",
         "version": "1.0.0",
         "environment": settings.app_env,
+        "components": {
+            "application": {"status": "operational"},
+            "database": {
+                "status": "operational" if db_healthy else "down",
+                "engine": db_meta.get("engine", "sqlite3"),
+                "mode": db_meta.get("mode", "WAL"),
+                "integrity": db_msg,
+                "total_reports": db_meta.get("total_reports", 0),
+            },
+            "external_intelligence": {
+                "virustotal": "configured" if settings.virustotal_api_key else "unconfigured",
+                "google_safe_browsing": "configured" if settings.google_safe_browsing_api_key else "unconfigured",
+                "ai_assistant": "configured" if (settings.openai_api_key or settings.gemini_api_key) else "unconfigured",
+            },
+        },
         "api_keys": {
             "virustotal": bool(settings.virustotal_api_key),
             "google_safe_browsing": bool(settings.google_safe_browsing_api_key),
             "ai": bool(settings.openai_api_key or settings.gemini_api_key),
         },
     }
+
+    return JSONResponse(status_code=status_code, content=payload)
 
 
 @app.get("/", tags=["Root"])

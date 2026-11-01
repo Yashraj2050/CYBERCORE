@@ -126,6 +126,19 @@ export default function OverviewDashboardPage() {
         }
       />
 
+      {/* Telemetry Scope & Provenance Notice */}
+      <div className="p-3.5 bg-cyber-bg-surface border border-cyber-border rounded-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 font-mono text-xs text-cyber-text-dim">
+        <div className="flex items-start sm:items-center gap-2.5">
+          <Terminal className="h-4 w-4 text-cyber-accent shrink-0 mt-0.5 sm:mt-0" />
+          <span className="text-[11px] leading-relaxed">
+            TELEMETRY NOTICE: Protection metrics and recent investigation records represent demonstration telemetry and curated fixtures served by FastAPI (<code className="text-cyber-text-secondary">/dashboard/stats</code>, <code className="text-cyber-text-secondary">/dashboard/recent</code>). Scans run ephemerally with zero persistent disk storage.
+          </span>
+        </div>
+        <Badge variant="monolithic" className="text-[9px] shrink-0 self-start sm:self-center">
+          CURATED DEMO FIXTURES
+        </Badge>
+      </div>
+
       {/* 2. Primary Telemetry Metric Cards */}
       <DashboardSummary
         stats={stats}

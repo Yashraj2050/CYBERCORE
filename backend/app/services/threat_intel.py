@@ -47,7 +47,7 @@ async def check_virustotal_url(url: str) -> ComponentScore:
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"reason": "VirusTotal API key not configured"},
+            details={"error_type": "CONFIGURATION_ERROR", "reason": "VirusTotal API key not configured"},
         )
 
     # VT v3 URL ID is URL-safe base64 of the URL without padding
@@ -65,13 +65,43 @@ async def check_virustotal_url(url: str) -> ComponentScore:
             # URL not yet in VT database — submit for analysis
             return await _submit_url_to_virustotal(url)
 
+        if resp.status_code in (401, 403):
+            return ComponentScore(
+                name="VirusTotal URL",
+                score=None,
+                confidence=Confidence.UNAVAILABLE,
+                finding_type=FindingType.UNABLE_TO_VERIFY,
+                details={
+                    "status": resp.status_code,
+                    "error_type": "CONFIGURATION_ERROR",
+                    "reason": f"VirusTotal authentication failed (HTTP {resp.status_code}). API key missing or invalid.",
+                },
+            )
+
+        if resp.status_code == 400:
+            return ComponentScore(
+                name="VirusTotal URL",
+                score=None,
+                confidence=Confidence.UNAVAILABLE,
+                finding_type=FindingType.UNABLE_TO_VERIFY,
+                details={
+                    "status": 400,
+                    "error_type": "REQUEST_ERROR",
+                    "reason": "VirusTotal bad request (HTTP 400).",
+                },
+            )
+
         if resp.status_code == 429:
             return ComponentScore(
                 name="VirusTotal URL",
                 score=None,
                 confidence=Confidence.UNAVAILABLE,
                 finding_type=FindingType.UNABLE_TO_VERIFY,
-                details={"reason": "VirusTotal rate limit reached"},
+                details={
+                    "status": 429,
+                    "error_type": "RATE_LIMIT",
+                    "reason": "VirusTotal rate limit reached",
+                },
             )
 
         resp.raise_for_status()
@@ -85,7 +115,15 @@ async def check_virustotal_url(url: str) -> ComponentScore:
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"reason": "VirusTotal request timed out"},
+            details={"error_type": "TIMEOUT", "reason": "VirusTotal request timed out"},
+        )
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        return ComponentScore(
+            name="VirusTotal URL",
+            score=None,
+            confidence=Confidence.UNAVAILABLE,
+            finding_type=FindingType.UNABLE_TO_VERIFY,
+            details={"error_type": "OFFLINE", "reason": "VirusTotal service unreachable or connection failed"},
         )
     except Exception as e:
         logger.error("VirusTotal error: %s", str(e))
@@ -94,7 +132,7 @@ async def check_virustotal_url(url: str) -> ComponentScore:
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"reason": f"VirusTotal unavailable: {type(e).__name__}"},
+            details={"error_type": "ERROR", "reason": f"VirusTotal unavailable: {type(e).__name__}"},
         )
 
 
@@ -112,13 +150,14 @@ async def _submit_url_to_virustotal(url: str) -> ComponentScore:
                 data={"url": url},
             )
         resp.raise_for_status()
-        # Return a pending result — scan just submitted
+        # Return a pending unassessed result — scan just submitted, do not fabricate clean score
         return ComponentScore(
             name="VirusTotal URL",
-            score=5,  # Minimal base score for newly submitted URL
+            score=None,
             confidence=Confidence.LOW,
-            finding_type=FindingType.NO_KNOWN_DETECTION,
-            details={"reason": "URL submitted to VirusTotal for analysis — results pending"},
+            finding_type=FindingType.UNABLE_TO_VERIFY,
+            details={"status": "pending_analysis", "reason": "URL submitted to VirusTotal for analysis — results pending"},
+            evidence=["URL submitted to VirusTotal; external reputation analysis is currently pending"],
         )
     except Exception:
         return ComponentScore(
@@ -126,7 +165,7 @@ async def _submit_url_to_virustotal(url: str) -> ComponentScore:
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"reason": "Could not submit URL to VirusTotal"},
+            details={"error_type": "ERROR", "reason": "Could not submit URL to VirusTotal"},
         )
 
 
@@ -143,25 +182,33 @@ def _parse_vt_url_result(data: dict) -> ComponentScore:
         if total == 0:
             return ComponentScore(
                 name="VirusTotal URL",
-                score=5,
+                score=None,
                 confidence=Confidence.LOW,
-                finding_type=FindingType.NO_KNOWN_DETECTION,
-                details={"stats": stats},
+                finding_type=FindingType.UNABLE_TO_VERIFY,
+                details={"stats": stats, "reason": "No engine analyses recorded in VirusTotal"},
             )
 
         detection_rate = (malicious + suspicious) / total
 
-        # Score: 0 detections = 5, 100% detections = 95
+        # Calibrated scoring thresholds:
+        # malicious >= 3 or rate >= 0.10 => CONFIRMED_THREAT
+        # 1-2 malicious => SUSPICIOUS_INDICATOR (score >= 50, never ignored)
+        # 0 malicious, suspicious > 0 => SUSPICIOUS_INDICATOR
+        # 0 malicious, 0 suspicious => NO_KNOWN_DETECTION (score 5)
         if malicious == 0 and suspicious == 0:
-            score = 5
+            score = 5.0
             finding_type = FindingType.NO_KNOWN_DETECTION
             confidence = Confidence.HIGH
-        elif malicious >= 5 or detection_rate >= 0.3:
-            score = min(95, 50 + malicious * 5)
+        elif malicious >= 3 or detection_rate >= 0.10:
+            score = min(95.0, 70.0 + malicious * 2.0)
             finding_type = FindingType.CONFIRMED_THREAT
             confidence = Confidence.HIGH
+        elif malicious >= 1:
+            score = min(65.0, 50.0 + (malicious + suspicious) * 5.0)
+            finding_type = FindingType.SUSPICIOUS_INDICATOR
+            confidence = Confidence.MEDIUM
         else:
-            score = min(60, 20 + (malicious + suspicious) * 8)
+            score = min(50.0, 30.0 + suspicious * 5.0)
             finding_type = FindingType.SUSPICIOUS_INDICATOR
             confidence = Confidence.MEDIUM
 
@@ -192,7 +239,7 @@ def _parse_vt_url_result(data: dict) -> ComponentScore:
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"reason": "Unexpected VirusTotal response format"},
+            details={"error_type": "INVALID_RESPONSE", "reason": "Unexpected VirusTotal response format"},
         )
 
 
@@ -253,7 +300,7 @@ async def check_google_safe_browsing(url: str) -> ComponentScore:
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"reason": "Google Safe Browsing API key not configured"},
+            details={"error_type": "CONFIGURATION_ERROR", "reason": "Google Safe Browsing API key not configured"},
         )
 
     payload = {
@@ -276,6 +323,33 @@ async def check_google_safe_browsing(url: str) -> ComponentScore:
                 f"?key={settings.google_safe_browsing_api_key}",
                 json=payload,
             )
+
+        if resp.status_code in (401, 403):
+            return ComponentScore(
+                name="Google Safe Browsing",
+                score=None,
+                confidence=Confidence.UNAVAILABLE,
+                finding_type=FindingType.UNABLE_TO_VERIFY,
+                details={
+                    "status": resp.status_code,
+                    "error_type": "CONFIGURATION_ERROR",
+                    "reason": f"Google Safe Browsing authentication failed (HTTP {resp.status_code})",
+                },
+            )
+
+        if resp.status_code == 400:
+            return ComponentScore(
+                name="Google Safe Browsing",
+                score=None,
+                confidence=Confidence.UNAVAILABLE,
+                finding_type=FindingType.UNABLE_TO_VERIFY,
+                details={
+                    "status": 400,
+                    "error_type": "REQUEST_ERROR",
+                    "reason": "Google Safe Browsing API key invalid or malformed request (HTTP 400)",
+                },
+            )
+
         resp.raise_for_status()
         data = resp.json()
 
@@ -283,7 +357,7 @@ async def check_google_safe_browsing(url: str) -> ComponentScore:
         if not matches:
             return ComponentScore(
                 name="Google Safe Browsing",
-                score=5,
+                score=5.0,
                 confidence=Confidence.HIGH,
                 finding_type=FindingType.NO_KNOWN_DETECTION,
                 details={"matches": []},
@@ -291,7 +365,7 @@ async def check_google_safe_browsing(url: str) -> ComponentScore:
             )
 
         threat_types = [m.get("threatType", "UNKNOWN") for m in matches]
-        score = 90 if "MALWARE" in threat_types else 80
+        score = 95.0 if "MALWARE" in threat_types else 90.0
         return ComponentScore(
             name="Google Safe Browsing",
             score=float(score),
@@ -307,7 +381,15 @@ async def check_google_safe_browsing(url: str) -> ComponentScore:
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"reason": "Google Safe Browsing request timed out"},
+            details={"error_type": "TIMEOUT", "reason": "Google Safe Browsing request timed out"},
+        )
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        return ComponentScore(
+            name="Google Safe Browsing",
+            score=None,
+            confidence=Confidence.UNAVAILABLE,
+            finding_type=FindingType.UNABLE_TO_VERIFY,
+            details={"error_type": "OFFLINE", "reason": "Google Safe Browsing service unreachable"},
         )
     except Exception as e:
         logger.error("GSB error: %s", str(e))
@@ -316,7 +398,7 @@ async def check_google_safe_browsing(url: str) -> ComponentScore:
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"reason": f"Google Safe Browsing unavailable: {type(e).__name__}"},
+            details={"error_type": "ERROR", "reason": f"Google Safe Browsing unavailable: {type(e).__name__}"},
         )
 
 
@@ -327,7 +409,7 @@ async def check_google_safe_browsing(url: str) -> ComponentScore:
 async def check_urlhaus(url: str) -> ComponentScore:
     """
     Check URL against URLhaus malware database.
-    URLhaus is maintained by abuse.ch and does not require an API key.
+    URLhaus is maintained by abuse.ch.
     """
     payload = {"url": url}
 
@@ -343,7 +425,23 @@ async def check_urlhaus(url: str) -> ComponentScore:
                 score=None,
                 confidence=Confidence.UNAVAILABLE,
                 finding_type=FindingType.UNABLE_TO_VERIFY,
-                details={"status": "auth_required", "reason": "URLhaus requires abuse.ch authentication key"},
+                details={
+                    "status": resp.status_code,
+                    "error_type": "CONFIGURATION_ERROR",
+                    "reason": f"URLhaus requires authentication key (HTTP {resp.status_code})",
+                },
+            )
+        if resp.status_code == 400:
+            return ComponentScore(
+                name="URLhaus",
+                score=None,
+                confidence=Confidence.UNAVAILABLE,
+                finding_type=FindingType.UNABLE_TO_VERIFY,
+                details={
+                    "status": 400,
+                    "error_type": "REQUEST_ERROR",
+                    "reason": "URLhaus request format error (HTTP 400)",
+                },
             )
         resp.raise_for_status()
         data = resp.json()
@@ -353,7 +451,7 @@ async def check_urlhaus(url: str) -> ComponentScore:
         if query_status == "not_in_database":
             return ComponentScore(
                 name="URLhaus",
-                score=5,
+                score=5.0,
                 confidence=Confidence.HIGH,
                 finding_type=FindingType.NO_KNOWN_DETECTION,
                 details={"status": "not_in_database"},
@@ -378,7 +476,7 @@ async def check_urlhaus(url: str) -> ComponentScore:
         if query_status == "no_results":
             return ComponentScore(
                 name="URLhaus",
-                score=5,
+                score=5.0,
                 confidence=Confidence.HIGH,
                 finding_type=FindingType.NO_KNOWN_DETECTION,
                 details={"status": "no_results"},
@@ -390,16 +488,32 @@ async def check_urlhaus(url: str) -> ComponentScore:
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"query_status": query_status},
+            details={"error_type": "UNEXPECTED_STATUS", "query_status": query_status},
         )
 
+    except httpx.TimeoutException:
+        return ComponentScore(
+            name="URLhaus",
+            score=None,
+            confidence=Confidence.UNAVAILABLE,
+            finding_type=FindingType.UNABLE_TO_VERIFY,
+            details={"error_type": "TIMEOUT", "reason": "URLhaus request timed out"},
+        )
+    except (httpx.ConnectError, httpx.ConnectTimeout):
+        return ComponentScore(
+            name="URLhaus",
+            score=None,
+            confidence=Confidence.UNAVAILABLE,
+            finding_type=FindingType.UNABLE_TO_VERIFY,
+            details={"error_type": "OFFLINE", "reason": "URLhaus service unreachable"},
+        )
     except Exception as e:
         return ComponentScore(
             name="URLhaus",
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"reason": f"URLhaus unavailable: {type(e).__name__}"},
+            details={"error_type": "ERROR", "reason": f"URLhaus unavailable: {type(e).__name__}"},
         )
 
 
@@ -425,12 +539,18 @@ def aggregate_threat_intel(
     available = [s for s in [vt, gsb, urlhaus] if s.is_available]
 
     if not available:
+        sources_status = {
+            "virustotal": vt.details.get("error_type") or vt.details.get("reason", "unavailable"),
+            "google_safe_browsing": gsb.details.get("error_type") or gsb.details.get("reason", "unavailable"),
+            "urlhaus": urlhaus.details.get("error_type") or urlhaus.details.get("reason", "unavailable"),
+        }
         return ComponentScore(
             name="Threat Intelligence",
             score=None,
             confidence=Confidence.UNAVAILABLE,
             finding_type=FindingType.UNABLE_TO_VERIFY,
-            details={"sources": {"virustotal": "unavailable", "gsb": "unavailable", "urlhaus": "unavailable"}},
+            details={"sources": sources_status, "error_type": "ALL_PROVIDERS_UNAVAILABLE"},
+            evidence=["All external threat intelligence providers are unavailable or unconfigured"],
         )
 
     # If any authoritative source confirms a threat, score high

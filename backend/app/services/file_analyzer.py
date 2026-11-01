@@ -94,7 +94,7 @@ async def check_virustotal_file_hash(sha256_hash: str) -> Optional[dict]:
     """Query VirusTotal API v3 for a file hash."""
     api_key = settings.virustotal_api_key
     if not api_key:
-        return None
+        return {"status": "unconfigured", "message": "VirusTotal API key is not configured"}
 
     url = f"https://www.virustotal.com/api/v3/files/{sha256_hash}"
     headers = {"x-apikey": api_key}
@@ -106,6 +106,7 @@ async def check_virustotal_file_hash(sha256_hash: str) -> Optional[dict]:
                 data = resp.json()
                 stats = data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
                 return {
+                    "status": "ok",
                     "malicious": stats.get("malicious", 0),
                     "suspicious": stats.get("suspicious", 0),
                     "undetected": stats.get("undetected", 0),
@@ -115,10 +116,14 @@ async def check_virustotal_file_hash(sha256_hash: str) -> Optional[dict]:
                 }
             elif resp.status_code == 404:
                 return {"status": "not_found", "message": "Hash not seen in VirusTotal database"}
+            else:
+                return {"status": "error", "message": f"VirusTotal returned HTTP {resp.status_code}"}
+    except httpx.TimeoutException:
+        logger.warning("VirusTotal file hash check timeout for %s", sha256_hash)
+        return {"status": "timeout", "message": "VirusTotal API query timed out after 10.0s"}
     except Exception as e:
         logger.warning("VirusTotal file hash check error: %s", str(e))
-
-    return None
+        return {"status": "error", "message": f"VirusTotal query failed: {str(e)}"}
 
 
 def analyze_file_data(filename: str, data: bytes, vt_data: Optional[dict] = None) -> FileAnalysisResult:
@@ -171,6 +176,10 @@ def analyze_file_data(filename: str, data: bytes, vt_data: Optional[dict] = None
             findings.append(f"VirusTotal verdict: Flagged by {mal_count} security vendors as suspicious/malicious.")
     elif vt_data and vt_data.get("status") == "not_found":
         findings.append("File hash is new/unseen in the global VirusTotal database.")
+    elif vt_data and vt_data.get("status") == "unconfigured":
+        findings.append("VirusTotal reputation lookup skipped (API key not configured).")
+    elif vt_data and vt_data.get("status") in {"error", "timeout"}:
+        findings.append(f"VirusTotal reputation lookup unavailable ({vt_data.get('message', 'query failed')}).")
 
     # Baseline safe findings
     if risk_score == 0:

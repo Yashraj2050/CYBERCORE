@@ -49,22 +49,18 @@ export function RecentInvestigations({
 
       <div className="flex items-center justify-between border-b border-cyber-border/60 pb-3">
         <div className="flex items-center gap-2">
-          <span className="text-[9px] font-mono text-cyber-accent tracking-widest">{"// ARCHIVE"}</span>
+          <span className="text-[9px] font-mono text-cyber-accent tracking-widest">{"// SAMPLES"}</span>
           <h2 className="text-xs font-mono font-semibold tracking-tactical uppercase text-cyber-text-primary">
             Recent Investigation Samples
           </h2>
-          <span className="text-[10px] font-mono text-cyber-text-dim">
-            ({scans.length} records)
-          </span>
+          <Badge variant="monolithic" className="text-[9px]">
+            {scans.length} RECORDS
+          </Badge>
         </div>
 
-        <Link
-          href="/investigations"
-          className="text-[10px] font-mono text-cyber-accent hover:underline flex items-center gap-1 uppercase tracking-wider"
-        >
-          Sample Archive
-          <ArrowUpRight className="h-3 w-3" />
-        </Link>
+        <span className="text-[10px] font-mono text-cyber-text-dim">
+          CURATED DEMO FIXTURES
+        </span>
       </div>
 
       {error ? (
@@ -82,10 +78,19 @@ export function RecentInvestigations({
             const isCritical = scan.risk_level === "CRITICAL" || scan.risk_score >= 70;
             const isSafe = scan.risk_level === "SAFE" || scan.risk_score < 20;
 
+            const toolHref =
+              scan.type === "URL"
+                ? `/security-tools/url-scanner?query=${encodeURIComponent(scan.target)}`
+                : scan.type === "MESSAGE"
+                ? `/security-tools/message-analyzer?query=${encodeURIComponent(scan.target)}`
+                : scan.type === "FILE"
+                ? `/security-tools/file-analyzer`
+                : `/security-tools/ip-domain-analyzer?query=${encodeURIComponent(scan.target)}`;
+
             return (
               <div
                 key={scan.id}
-                className="py-2.5 flex items-center justify-between gap-3 text-xs font-mono hover:bg-cyber-bg-surface/50 px-1.5 transition-colors rounded-xs"
+                className="py-2.5 flex items-center justify-between gap-3 text-xs font-mono hover:bg-cyber-bg-surface/50 px-1.5 transition-colors rounded-xs group"
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="flex h-7 w-7 items-center justify-center border border-cyber-border bg-cyber-bg rounded-xs shrink-0">
@@ -109,12 +114,14 @@ export function RecentInvestigations({
                   >
                     {scan.risk_level} ({scan.risk_score})
                   </Badge>
-                  <span className="hidden sm:inline text-[10px] text-cyber-text-dim">
-                    {new Date(scan.timestamp).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
+                  <Link
+                    href={toolHref}
+                    className="text-[10px] font-mono text-cyber-accent hover:underline flex items-center gap-0.5 opacity-80 group-hover:opacity-100"
+                    title={`Inspect in workstation`}
+                  >
+                    <span>Inspect</span>
+                    <ArrowUpRight className="h-2.5 w-2.5" />
+                  </Link>
                 </div>
               </div>
             );

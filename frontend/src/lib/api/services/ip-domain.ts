@@ -9,6 +9,7 @@ import type { IpDomainRequest, IpDomainResult, IpDomainApiError } from "@/types/
 export const ipDomainService = {
   /**
    * Dispatches an IP address or domain name for technical intelligence inspection.
+   * POST /api/v1/ip-domain/analyze
    */
   async analyze(request: IpDomainRequest): Promise<IpDomainResult> {
     try {
@@ -18,6 +19,22 @@ export const ipDomainService = {
       });
 
       // Augment with client-side completion timestamp
+      const data = response.data;
+      data.scanned_at = new Date().toISOString();
+      return data;
+    } catch (err) {
+      throw this.classifyError(err);
+    }
+  },
+
+  /**
+   * Retrieves IP or domain intelligence via path parameter.
+   * GET /api/v1/ip-domain/{query:path}
+   */
+  async getByQuery(query: string): Promise<IpDomainResult> {
+    try {
+      const cleanQuery = query.trim();
+      const response = await apiClient.get<IpDomainResult>(`/ip-domain/${encodeURIComponent(cleanQuery)}`);
       const data = response.data;
       data.scanned_at = new Date().toISOString();
       return data;

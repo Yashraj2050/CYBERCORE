@@ -37,6 +37,13 @@ class MessageAnalysisResult:
 # Each entry: (regex_pattern, description, scam_type, severity 0-100)
 # ─────────────────────────────────────────────────────────────
 
+# Negative signals: Legitimate warnings and security advisories that should NOT be flagged as scams
+NEGATIVE_SIGNALS = [
+    re.compile(r"\b(?:never|do\s+not|don'?t)\s+share\s+(?:your\s+|the\s+)?(?:otp|it|pin|password|credentials?)\b"),
+    re.compile(r"\b(?:bank|organization|service|we)\s+will\s+never\s+(?:call|ask|request|demand).*(?:otp|pin|password)\b"),
+    re.compile(r"\bcaution:?\s+do\s+not\s+(?:share|disclose|forward)\b"),
+]
+
 SCAM_PATTERNS = [
     # OTP / Account Verification Scams
     (r"\b(?:otp.*expire|your\s+otp\s+is|share.*otp|send.*otp|verify.*otp)\b", "OTP sharing request", "OTP_FRAUD", 85),
@@ -157,11 +164,16 @@ def analyze_message(message_text: str) -> MessageAnalysisResult:
     max_score = 0
     detected_scam_type = None
 
+    # Pre-process message: strip legitimate warning/caution clauses so they do not trigger false positive scam patterns
+    clean_scam_text = text_lower
+    for neg_pat in NEGATIVE_SIGNALS:
+        clean_scam_text = neg_pat.sub(" ", clean_scam_text)
+
     # ── Pattern matching ──────────────────────────────────────
     for pattern, description, scam_type, severity in SCAM_PATTERNS:
         if description is None:
-            continue  # Skip negative signals (legitimate warnings)
-        if re.search(pattern, text_lower):
+            continue  # Skip negative signal sentinel
+        if re.search(pattern, clean_scam_text):
             indicators.append({
                 "type": "pattern_match",
                 "description": description,

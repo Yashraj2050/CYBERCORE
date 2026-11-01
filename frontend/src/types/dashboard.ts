@@ -43,6 +43,35 @@ export interface ThreatFeedResponse {
   active_campaigns: ThreatFeedCampaign[];
 }
 
+export interface ThreatReportPayload {
+  url: string;
+  threat_type: "phishing" | "malware" | "scam" | "impersonation" | "other" | string;
+  description?: string;
+  source?: string;
+}
+
+export interface CommunityReportItem {
+  id: string;
+  url: string;
+  threat_type: string;
+  description?: string | null;
+  source?: string;
+  reported_at: string;
+  status: "PENDING_REVIEW" | "SUBMITTED" | "REJECTED" | string;
+  risk_classification?: string;
+}
+
+export interface ThreatReportResponse {
+  status: "SUCCESS" | "DUPLICATE_ACKNOWLEDGED" | "ERROR" | string;
+  message: string;
+  report: CommunityReportItem;
+}
+
+export interface CommunityReportsResponse {
+  reports: CommunityReportItem[];
+  total_count: number;
+}
+
 export interface HealthCheckResponse {
   status: string;
   service: string;

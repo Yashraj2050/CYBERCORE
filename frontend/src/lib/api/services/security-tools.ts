@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import { apiConfig } from "@/config/api";
+import { ApiError } from "@/lib/api/errors";
 import type {
   ScanRequest,
   ScanResponse,
@@ -7,7 +8,10 @@ import type {
   IpDomainResponse,
   HashCheckRequest,
   HashCheckResponse,
+  FileAnalyzeResponse,
   PasswordBreachResult,
+  HashApiError,
+  FileApiError,
 } from "@/types/security-tools";
 import type { MessageAnalyzeRequest, MessageAnalyzeResponse } from "@/types/messages";
 
@@ -44,8 +48,164 @@ export const securityToolsService = {
    * POST /api/v1/files/check-hash
    */
   async checkHash(request: HashCheckRequest): Promise<HashCheckResponse> {
-    const response = await apiClient.post<HashCheckResponse>("/files/check-hash", request);
-    return response.data;
+    try {
+      const response = await apiClient.post<HashCheckResponse>("/files/check-hash", {
+        hash_value: request.hash_value.trim().toLowerCase(),
+        filename: request.filename?.trim() || null,
+      });
+      return response.data;
+    } catch (err) {
+      throw this.classifyHashError(err);
+    }
+  },
+
+  /**
+   * Uploads and inspects a binary or document file for malware, disguised extensions,
+   * and VirusTotal reputation (up to 25MB).
+   * POST /api/v1/files/analyze
+   */
+  async analyzeFile(file: File): Promise<FileAnalyzeResponse> {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await apiClient.post<FileAnalyzeResponse>("/files/analyze", formData);
+      return response.data;
+    } catch (err) {
+      throw this.classifyFileError(err);
+    }
+  },
+
+  /**
+   * Normalizes hash check errors into structured, user-facing representations.
+   */
+  classifyHashError(err: unknown): HashApiError {
+    if (typeof err === "object" && err !== null && "title" in err && "message" in err) {
+      return err as HashApiError;
+    }
+
+    if (err instanceof ApiError || (typeof err === "object" && err !== null && "status" in err && "payload" in err)) {
+      const apiErr = err as ApiError;
+      const rawDetail =
+        typeof apiErr.payload === "object" && apiErr.payload !== null && "detail" in apiErr.payload
+          ? (apiErr.payload as { detail: unknown }).detail
+          : apiErr.message;
+
+      const detailString = typeof rawDetail === "string" ? rawDetail : JSON.stringify(rawDetail);
+      const detailLower = detailString.toLowerCase();
+
+      const isInvalidFormat =
+        apiErr.status === 400 ||
+        (apiErr.status === 422 && (detailLower.includes("hexadecimal") || detailLower.includes("hash")));
+
+      let cleanTitle = "Hash Lookup Error";
+      let cleanMessage = apiErr.message;
+
+      if (isInvalidFormat) {
+        cleanTitle = "Invalid Hash Format";
+        cleanMessage = "Must be a valid hexadecimal string of 32 (MD5), 40 (SHA-1), or 64 (SHA-256) characters.";
+      } else if (apiErr.status === 422) {
+        cleanTitle = "Input Length Error";
+        cleanMessage = "Hash string must be between 32 and 64 characters.";
+      } else if (apiErr.status >= 500) {
+        cleanTitle = "Engine Error";
+        cleanMessage = "The signature inspection engine encountered an internal exception.";
+      }
+
+      return {
+        status: apiErr.status,
+        title: cleanTitle,
+        message: cleanMessage,
+        detail: detailString,
+        isInvalidFormat,
+      };
+    }
+
+    if (err instanceof Error) {
+      const isTimeout = err.name === "AbortError" || err.message.toLowerCase().includes("timeout");
+      return {
+        status: isTimeout ? 408 : 0,
+        title: isTimeout ? "Request Timed Out" : "Backend Bus Unavailable",
+        message: isTimeout
+          ? "Signature lookup took longer than 30s to respond."
+          : "Unable to establish socket connection with FastAPI backend at http://localhost:8000.",
+        isTimeout,
+        detail: err.message,
+      };
+    }
+
+    return {
+      status: 0,
+      title: "Unknown Error",
+      message: "An unknown execution error occurred during hash lookup.",
+    };
+  },
+
+  /**
+   * Normalizes binary file upload errors into structured, user-facing representations.
+   */
+  classifyFileError(err: unknown): FileApiError {
+    if (typeof err === "object" && err !== null && "title" in err && "message" in err) {
+      return err as FileApiError;
+    }
+
+    if (err instanceof ApiError || (typeof err === "object" && err !== null && "status" in err && "payload" in err)) {
+      const apiErr = err as ApiError;
+      const rawDetail =
+        typeof apiErr.payload === "object" && apiErr.payload !== null && "detail" in apiErr.payload
+          ? (apiErr.payload as { detail: unknown }).detail
+          : apiErr.message;
+
+      const detailString = typeof rawDetail === "string" ? rawDetail : JSON.stringify(rawDetail);
+      const detailLower = detailString.toLowerCase();
+
+      const isTooLarge = apiErr.status === 413 || detailLower.includes("25mb") || detailLower.includes("exceeds");
+      const isEmpty = detailLower.includes("must have a filename") || detailLower.includes("empty");
+
+      let cleanTitle = "File Analysis Error";
+      let cleanMessage = apiErr.message;
+
+      if (isTooLarge) {
+        cleanTitle = "File Size Exceeded";
+        cleanMessage = "Uploaded file exceeds the maximum permitted size of 25MB.";
+      } else if (isEmpty) {
+        cleanTitle = "Invalid File Payload";
+        cleanMessage = "The selected file is invalid or missing a valid filename.";
+      } else if (apiErr.status === 422) {
+        cleanTitle = "Upload Format Error";
+        cleanMessage = "Server could not process multipart form upload.";
+      } else if (apiErr.status >= 500) {
+        cleanTitle = "Engine Error";
+        cleanMessage = "The binary inspection engine encountered an internal exception.";
+      }
+
+      return {
+        status: apiErr.status,
+        title: cleanTitle,
+        message: cleanMessage,
+        detail: detailString,
+        isTooLarge,
+        isEmpty,
+      };
+    }
+
+    if (err instanceof Error) {
+      const isTimeout = err.name === "AbortError" || err.message.toLowerCase().includes("timeout");
+      return {
+        status: isTimeout ? 408 : 0,
+        title: isTimeout ? "Request Timed Out" : "Backend Bus Unavailable",
+        message: isTimeout
+          ? "Binary inspection took longer than 30s to respond."
+          : "Unable to establish socket connection with FastAPI backend at http://localhost:8000.",
+        isTimeout,
+        detail: err.message,
+      };
+    }
+
+    return {
+      status: 0,
+      title: "Unknown Error",
+      message: "An unknown execution error occurred during file analysis.",
+    };
   },
 
   /**
@@ -106,7 +266,7 @@ export const securityToolsService = {
 
       const data = await response.json();
       return {
-        status: "CLEAN",
+        status: "NOT FOUND IN BREACH CORPUS",
         prefix: cleanPrefix,
         message: "Prefix successfully queried.",
         detail: JSON.stringify(data),

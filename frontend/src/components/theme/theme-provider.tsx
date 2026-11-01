@@ -22,36 +22,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setMounted(true);
     try {
       const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-      if (stored === "dark" || stored === "light") {
-        setThemeState(stored);
-        applyThemeClass(stored);
-      } else {
-        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        const initial = prefersDark ? "dark" : "light";
-        setThemeState(initial);
-        applyThemeClass(initial);
-      }
+      const initial: Theme = stored === "light" ? "light" : "dark";
+      setThemeState(initial);
+      applyThemeClass(initial);
     } catch {
       // localStorage not accessible
     }
-
-    // Media query listener for OS-level theme change
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleChange = (e: MediaQueryListEvent) => {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (!stored) {
-          const newTheme = e.matches ? "dark" : "light";
-          setThemeState(newTheme);
-          applyThemeClass(newTheme);
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
   }, []);
 
   const applyThemeClass = (targetTheme: Theme) => {

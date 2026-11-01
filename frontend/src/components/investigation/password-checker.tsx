@@ -3,7 +3,6 @@
 import * as React from "react";
 import {
   Lock,
-  ShieldCheck,
   ShieldAlert,
   AlertTriangle,
   RefreshCw,
@@ -12,11 +11,12 @@ import {
   AlertOctagon,
   Eye,
   EyeOff,
+  RotateCcw,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { securityToolsService } from "@/lib/api/services/security-tools";
-import type { PasswordBreachStatus, PasswordBreachResult } from "@/types/security-tools";
+import type { PasswordBreachResult } from "@/types/security-tools";
 
 export function PasswordChecker() {
   const [password, setPassword] = React.useState("");
@@ -34,16 +34,25 @@ export function PasswordChecker() {
     return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
   }
 
-  const handleVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!password) return;
+  const handleVerify = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanPassword = password.trim();
+    if (!cleanPassword) {
+      setResult({
+        status: "INVALID_INPUT",
+        prefix: "NONE",
+        message: "Password Required",
+        detail: "Please enter a password to verify against breach records. The raw password is never transmitted across the network.",
+      });
+      return;
+    }
 
     setLoading(true);
     setResult(null);
 
     try {
       // 1. Calculate SHA-1 entirely in local browser memory
-      const fullHash = await computeSha1Hex(password);
+      const fullHash = await computeSha1Hex(cleanPassword);
       const prefix = fullHash.slice(0, 5);
       const suffix = fullHash.slice(5);
       setComputedPrefix(prefix);
@@ -71,29 +80,63 @@ export function PasswordChecker() {
           status: "ERROR",
           prefix,
           message: "API Gateway Error",
-          detail: res.message,
+          detail: res.message || "Failed to query the breach verification gateway. This does NOT indicate your password is safe.",
         });
       } else {
-        // Parse returned suffixes to determine if full hash matched
+        // Parse returned multiline suffixes: backend returns { data: "SUFFIX:COUNT\r\n...", hash_prefix }
+        if (!res.detail) {
+          setResult({
+            status: "ERROR",
+            prefix,
+            message: "Empty Gateway Response",
+            detail: "The breach verification service returned an empty payload. This does NOT indicate your password is safe.",
+          });
+          return;
+        }
+
         let isBreached = false;
         let count = 0;
+        let totalSuffixesChecked = 0;
 
-        if (res.detail) {
-          try {
-            const raw = JSON.parse(res.detail);
-            // If backend returns an array or mapping of suffixes:
-            if (typeof raw === "object" && raw !== null) {
-              const matchedSuffix = Object.keys(raw).find(
-                (s) => s.toUpperCase() === suffix
-              );
-              if (matchedSuffix) {
-                isBreached = true;
-                count = Number(raw[matchedSuffix]) || 1;
-              }
-            }
-          } catch {
-            isBreached = false;
+        try {
+          const raw = JSON.parse(res.detail);
+          const rawData =
+            typeof raw === "object" && raw !== null && "data" in raw
+              ? String((raw as { data: unknown }).data)
+              : typeof raw === "string"
+              ? raw
+              : "";
+
+          if (!rawData && typeof raw === "object" && raw !== null) {
+            throw new Error("Missing breach data string in API response payload.");
           }
+
+          // Split multiline data string into individual lines (\r\n or \n)
+          const lines = rawData.split(/\r?\n/);
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            const colonIndex = trimmed.indexOf(":");
+            if (colonIndex === -1) continue;
+
+            const lineSuffix = trimmed.slice(0, colonIndex).trim().toUpperCase();
+            const countStr = trimmed.slice(colonIndex + 1).trim();
+            totalSuffixesChecked++;
+
+            if (lineSuffix === suffix) {
+              isBreached = true;
+              count = parseInt(countStr, 10) || 1;
+              break;
+            }
+          }
+        } catch {
+          setResult({
+            status: "ERROR",
+            prefix,
+            message: "Malformed Breach Response",
+            detail: "Failed to parse credential breach signatures from gateway. This does NOT indicate your password is safe.",
+          });
+          return;
         }
 
         if (isBreached) {
@@ -106,10 +149,11 @@ export function PasswordChecker() {
           });
         } else {
           setResult({
-            status: "CLEAN",
+            status: "NOT FOUND IN BREACH CORPUS",
             prefix,
-            message: "No Breach Records Found for Signature",
-            detail: `Prefix ${prefix} was queried via k-anonymity. The remaining 35 characters were matched locally in-browser with zero breach hits.`,
+            message: "No Matching Record in Breach Corpus",
+            detail:
+              "No matching record was found in the checked breach corpus. This does not guarantee that the password has never been compromised.",
           });
         }
       }
@@ -118,11 +162,17 @@ export function PasswordChecker() {
         status: "ERROR",
         prefix: computedPrefix || "UNKNOWN",
         message: "Verification Failed",
-        detail: err instanceof Error ? err.message : "Client evaluation exception.",
+        detail: err instanceof Error ? err.message : "Client evaluation exception. This does NOT indicate your password is safe.",
       });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleClear = () => {
+    setPassword("");
+    setResult(null);
+    setComputedPrefix(null);
   };
 
   return (
@@ -167,25 +217,42 @@ export function PasswordChecker() {
             </button>
           </div>
 
-          <Button
-            type="submit"
-            variant="default"
-            size="sm"
-            disabled={!password || loading}
-            className="h-9 px-4 gap-1.5 shrink-0"
-          >
-            {loading ? (
-              <>
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                <span>QUERYING...</span>
-              </>
-            ) : (
-              <>
-                <Search className="h-3.5 w-3.5" />
-                <span>VERIFY BREACH</span>
-              </>
+          <div className="flex items-center gap-2">
+            <Button
+              type="submit"
+              variant="default"
+              size="sm"
+              disabled={!password || loading}
+              className="h-9 px-4 gap-1.5 shrink-0"
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  <span>QUERYING...</span>
+                </>
+              ) : (
+                <>
+                  <Search className="h-3.5 w-3.5" />
+                  <span>VERIFY BREACH</span>
+                </>
+              )}
+            </Button>
+
+            {(password || result) && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleClear}
+                disabled={loading}
+                className="h-9 px-3 gap-1 shrink-0 text-cyber-text-dim hover:text-cyber-text-primary"
+                title="Clear input and sensitive state"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">CLEAR</span>
+              </Button>
             )}
-          </Button>
+          </div>
         </div>
 
         {computedPrefix && (
@@ -200,7 +267,7 @@ export function PasswordChecker() {
       {result && (
         <div
           className={`p-4 border rounded-xs space-y-2 text-xs font-mono transition-all ${
-            result.status === "CLEAN"
+            result.status === "NOT FOUND IN BREACH CORPUS"
               ? "bg-cyber-threat-secure-bg border-cyber-threat-secure-border text-cyber-threat-secure"
               : result.status === "BREACHED"
               ? "bg-cyber-threat-critical-bg border-cyber-threat-critical-border text-cyber-threat-critical"
@@ -208,12 +275,14 @@ export function PasswordChecker() {
               ? "bg-amber-950/20 border-amber-600/40 text-amber-300"
               : result.status === "INVALID_INPUT"
               ? "bg-cyber-threat-medium-bg border-cyber-threat-medium-border text-cyber-threat-medium"
-              : "bg-cyber-bg border-cyber-border text-cyber-text-secondary"
+              : "bg-cyber-threat-critical-bg border-cyber-threat-critical-border text-cyber-threat-critical"
           }`}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 font-semibold">
-              {result.status === "CLEAN" && <CheckCircle className="h-4 w-4" />}
+              {result.status === "NOT FOUND IN BREACH CORPUS" && (
+                <CheckCircle className="h-4 w-4" />
+              )}
               {result.status === "BREACHED" && <ShieldAlert className="h-4 w-4" />}
               {result.status === "SERVICE_UNAVAILABLE" && <AlertTriangle className="h-4 w-4" />}
               {result.status === "INVALID_INPUT" && <AlertOctagon className="h-4 w-4" />}
@@ -223,13 +292,15 @@ export function PasswordChecker() {
 
             <Badge
               variant={
-                result.status === "CLEAN"
+                result.status === "NOT FOUND IN BREACH CORPUS"
                   ? "secure"
                   : result.status === "BREACHED"
                   ? "critical"
                   : result.status === "SERVICE_UNAVAILABLE"
                   ? "medium"
-                  : "default"
+                  : result.status === "INVALID_INPUT"
+                  ? "medium"
+                  : "critical"
               }
               radius="xs"
             >
@@ -243,7 +314,13 @@ export function PasswordChecker() {
 
           {result.status === "SERVICE_UNAVAILABLE" && (
             <div className="p-2 bg-black/40 border border-amber-600/30 rounded-xs text-[10px] font-mono text-amber-200">
-              <strong>CRITICAL NOTICE:</strong> HTTP 503 indicates the external breach API gateway was unreachable. This is an infrastructure availability timeout, NOT proof that the credential is secure.
+              <strong>CRITICAL NOTICE:</strong> HTTP 503 indicates the external breach API gateway was unreachable. This is an infrastructure availability timeout, NOT proof that the credential has never been compromised.
+            </div>
+          )}
+
+          {result.status === "ERROR" && (
+            <div className="p-2 bg-black/40 border border-cyber-threat-critical-border rounded-xs text-[10px] font-mono text-cyber-threat-critical">
+              <strong>SECURITY NOTICE:</strong> Verification encountered a gateway or parsing failure. This failure is never treated as absence from the breach corpus. Re-test when the service responds normally.
             </div>
           )}
         </div>
@@ -251,4 +328,3 @@ export function PasswordChecker() {
     </div>
   );
 }
-

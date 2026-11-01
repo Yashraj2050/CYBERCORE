@@ -4,6 +4,9 @@ import type {
   RecentActivityResponse,
   ThreatFeedResponse,
   HealthCheckResponse,
+  ThreatReportPayload,
+  ThreatReportResponse,
+  CommunityReportsResponse,
 } from "@/types/dashboard";
 
 /**
@@ -34,6 +37,26 @@ export const dashboardService = {
    */
   async getThreatFeed(): Promise<ThreatFeedResponse> {
     const response = await apiClient.get<ThreatFeedResponse>("/dashboard/threat-feed");
+    return response.data;
+  },
+
+  /**
+   * Submits a community threat report.
+   * POST /api/v1/dashboard/report
+   */
+  async reportThreat(payload: ThreatReportPayload): Promise<ThreatReportResponse> {
+    const response = await apiClient.post<ThreatReportResponse>("/dashboard/report", payload);
+    return response.data;
+  },
+
+  /**
+   * Retrieves recent community-submitted threat reports.
+   * GET /api/v1/dashboard/reports
+   */
+  async getCommunityReports(limit: number = 20): Promise<CommunityReportsResponse> {
+    const response = await apiClient.get<CommunityReportsResponse>("/dashboard/reports", {
+      params: { limit },
+    });
     return response.data;
   },
 

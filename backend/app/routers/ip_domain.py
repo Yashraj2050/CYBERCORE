@@ -12,9 +12,10 @@ import logging
 import socket
 import ipaddress
 from typing import Optional, Union, Literal, Annotated
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
+from app.limiter import limiter
 from app.services.dns_analyzer import analyze_dns, get_domain_rdap, build_domain_reputation_score
 from app.utils.validators import validate_domain, is_private_ip, ValidationError
 
@@ -101,14 +102,16 @@ def is_valid_ip(val: str) -> bool:
 
 
 @router.post("/analyze", response_model=IpDomainResponse)
-async def analyze_ip_or_domain(payload: IpDomainRequest):
+@limiter.limit("30/minute")
+async def analyze_ip_or_domain(payload: IpDomainRequest, request: Request):
     """Analyze an IP address or domain name."""
     query = payload.query.strip().lower()
     return await _process_query(query)
 
 
 @router.get("/{query:path}", response_model=IpDomainResponse)
-async def get_ip_or_domain(query: str):
+@limiter.limit("30/minute")
+async def get_ip_or_domain(query: str, request: Request):
     """Retrieve intelligence for a given IP or domain."""
     return await _process_query(query.strip().lower())
 

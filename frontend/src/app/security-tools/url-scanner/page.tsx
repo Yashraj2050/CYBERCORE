@@ -28,7 +28,7 @@ import {
   ScanErrorState,
 } from "@/components/investigation/url-scanner";
 import { scannerService } from "@/lib/api/services/scanner";
-import type { UrlScanResult, ScanApiError } from "@/types/scanner";
+import type { UrlScanResult, ScanApiError, ScanMode } from "@/types/scanner";
 
 interface RecentScanItem {
   scanId: string;
@@ -41,9 +41,15 @@ interface RecentScanItem {
 
 function ScannerWorkstation() {
   const searchParams = useSearchParams();
+  const idParam = searchParams.get("id") || searchParams.get("scan_id") || "";
+  const domainParam = searchParams.get("domain") || "";
   const queryParam = searchParams.get("query") || searchParams.get("url") || "";
 
-  const [url, setUrl] = React.useState<string>(queryParam);
+  const initialMode: ScanMode = idParam ? "lookup_id" : domainParam ? "lookup_domain" : "scan";
+  const initialValue = idParam || domainParam || queryParam;
+
+  const [mode, setMode] = React.useState<ScanMode>(initialMode);
+  const [url, setUrl] = React.useState<string>(initialValue);
   const [status, setStatus] = React.useState<"idle" | "scanning" | "success" | "error">("idle");
   const [scanResult, setScanResult] = React.useState<UrlScanResult | null>(null);
   const [scanError, setScanError] = React.useState<ScanApiError | null>(null);
@@ -102,15 +108,23 @@ function ScannerWorkstation() {
     });
   };
 
-  const executeScan = React.useCallback(async (targetUrl: string) => {
-    const cleanTarget = targetUrl.trim();
+  const executeDispatch = React.useCallback(async (target: string, dispatchMode: ScanMode = mode) => {
+    const cleanTarget = target.trim();
     if (!cleanTarget) return;
 
     setStatus("scanning");
     setScanError(null);
 
     try {
-      const result = await scannerService.scanUrl({ url: cleanTarget, source: "web" });
+      let result: UrlScanResult;
+      if (dispatchMode === "lookup_id") {
+        result = await scannerService.getScanById(cleanTarget);
+      } else if (dispatchMode === "lookup_domain") {
+        result = await scannerService.getScanByDomain(cleanTarget);
+      } else {
+        result = await scannerService.scanUrl({ url: cleanTarget, source: "web" });
+      }
+
       setScanResult(result);
       setStatus("success");
       saveToRecent(result);
@@ -119,20 +133,21 @@ function ScannerWorkstation() {
       setScanError(classified);
       setStatus("error");
     }
-  }, []);
+  }, [mode]);
 
   // Pre-populate URL query parameter on initial load without automatic execution
   React.useEffect(() => {
-    if (queryParam && !initialTriggerRef.current) {
+    if (initialValue && !initialTriggerRef.current) {
       initialTriggerRef.current = true;
-      setUrl(queryParam);
+      setUrl(initialValue);
+      setMode(initialMode);
       // Explicitly require analyst confirmation; do NOT auto-dispatch
     }
-  }, [queryParam]);
+  }, [initialValue, initialMode]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    executeScan(url);
+    executeDispatch(url, mode);
   };
 
   const handleReset = () => {
@@ -144,7 +159,26 @@ function ScannerWorkstation() {
 
   const handleSelectPreset = (presetUrl: string) => {
     setUrl(presetUrl);
-    executeScan(presetUrl);
+    setMode("scan");
+    executeDispatch(presetUrl, "scan");
+  };
+
+  const handleInspectRecent = async (item: RecentScanItem) => {
+    setStatus("scanning");
+    setScanError(null);
+    try {
+      // First attempt to retrieve from backend in-memory cache by scan_id
+      const cached = await scannerService.getScanById(item.scanId);
+      setUrl(item.scanId);
+      setMode("lookup_id");
+      setScanResult(cached);
+      setStatus("success");
+    } catch {
+      // If cached scan expired or backend restarted, re-dispatch fresh scan
+      setUrl(item.url);
+      setMode("scan");
+      executeDispatch(item.url, "scan");
+    }
   };
 
   return (
@@ -213,6 +247,8 @@ function ScannerWorkstation() {
             isLoading={status === "scanning"}
             onReset={handleReset}
             onSelectPreset={handleSelectPreset}
+            mode={mode}
+            onModeChange={setMode}
           />
         </div>
 
@@ -251,7 +287,7 @@ function ScannerWorkstation() {
         {status === "error" && scanError && (
           <ScanErrorState
             error={scanError}
-            onRetry={() => executeScan(url)}
+            onRetry={() => executeDispatch(url, mode)}
             onReset={handleReset}
             targetUrl={url}
           />
@@ -354,10 +390,7 @@ function ScannerWorkstation() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          onClick={() => {
-                            setUrl(item.url);
-                            executeScan(item.url);
-                          }}
+                          onClick={() => handleInspectRecent(item)}
                           className="h-6 px-2 text-[10px] uppercase font-mono"
                         >
                           Inspect

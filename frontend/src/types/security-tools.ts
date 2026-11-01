@@ -59,6 +59,17 @@ export interface IpDomainResponse {
 }
 
 // 4. File Security
+export interface VirusTotalReputation {
+  malicious?: number;
+  suspicious?: number;
+  undetected?: number;
+  harmless?: number;
+  total_engines?: number;
+  reputation?: number;
+  status?: string;
+  message?: string;
+}
+
 export interface HashCheckRequest {
   hash_value: string;
   filename?: string | null;
@@ -67,10 +78,10 @@ export interface HashCheckRequest {
 export interface HashCheckResponse {
   hash: string;
   filename?: string | null;
-  risk_score: number;
-  threat_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "SAFE";
+  risk_score: number | null;
+  threat_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "SAFE" | "UNASSESSED" | string;
   findings: string[];
-  vt_reputation?: Record<string, unknown> | null;
+  vt_reputation?: VirusTotalReputation | Record<string, unknown> | null;
 }
 
 export interface FileAnalyzeResponse {
@@ -83,18 +94,38 @@ export interface FileAnalyzeResponse {
   declared_extension: string;
   is_spoofed_extension: boolean;
   risk_score: number;
-  threat_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "SAFE";
+  threat_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "SAFE" | string;
   findings: string[];
-  vt_reputation?: Record<string, unknown> | null;
+  vt_reputation?: VirusTotalReputation | Record<string, unknown> | null;
+}
+
+export interface HashApiError {
+  status: number;
+  title: string;
+  message: string;
+  detail?: string;
+  isInvalidFormat?: boolean;
+  isTimeout?: boolean;
+}
+
+export interface FileApiError {
+  status: number;
+  title: string;
+  message: string;
+  detail?: string;
+  isTooLarge?: boolean;
+  isEmpty?: boolean;
+  isTimeout?: boolean;
 }
 
 // 5. Password Breach Verifier (k-Anonymity)
 export type PasswordBreachStatus =
-  | "CLEAN"                // Hash suffix not found in breach data
-  | "BREACHED"             // Hash suffix matched in breach records
-  | "SERVICE_UNAVAILABLE"  // HTTP 503: External HIBP service unreachable (never interpreted as clean)
-  | "INVALID_INPUT"        // HTTP 422: Input is not a valid 5-char hex SHA-1 prefix
-  | "ERROR";               // Unexpected failure
+  | "NOT FOUND IN BREACH CORPUS" // Hash suffix not matched in checked breach corpus
+  | "CLEAN"                      // Legacy alias
+  | "BREACHED"                   // Hash suffix matched in breach records
+  | "SERVICE_UNAVAILABLE"        // HTTP 503: External HIBP service unreachable
+  | "INVALID_INPUT"              // HTTP 422: Input is not a valid 5-char hex SHA-1 prefix
+  | "ERROR";                     // Unexpected failure
 
 export interface PasswordBreachResult {
   status: PasswordBreachStatus;

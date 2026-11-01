@@ -4,7 +4,7 @@ Loads all environment variables with validation via pydantic-settings.
 """
 
 from functools import lru_cache
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_secret_key: str = "CHANGE_ME_IN_PRODUCTION"
+    admin_api_key: Optional[str] = None
+    database_path: str = "cybercore.db"
+    trusted_proxies: str = "127.0.0.1,::1"
+
+    @property
+    def trusted_proxies_list(self) -> List[str]:
+        return [p.strip() for p in self.trusted_proxies.split(",") if p.strip()]
 
     # CORS
     cors_origins: str = "http://localhost:3000"

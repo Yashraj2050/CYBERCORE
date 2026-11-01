@@ -9,9 +9,10 @@ Provides endpoints for inspecting potentially dangerous files:
 import logging
 import re
 from typing import Optional
-from fastapi import APIRouter, File, UploadFile, HTTPException, status
+from fastapi import APIRouter, File, UploadFile, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from app.limiter import limiter
 from app.services.file_analyzer import (
     analyze_file_data,
     check_virustotal_file_hash,
@@ -31,7 +32,8 @@ class HashCheckRequest(BaseModel):
 
 
 @router.post("/analyze")
-async def analyze_file(file: UploadFile = File(...)):
+@limiter.limit("10/minute")
+async def analyze_file(request: Request, file: UploadFile = File(...)):
     """
     Upload and analyze a file for malware indicators, disguised extensions,
     and VirusTotal threat reputation.
@@ -46,7 +48,7 @@ async def analyze_file(file: UploadFile = File(...)):
     content = await file.read(MAX_FILE_SIZE + 1024)
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"File exceeds maximum allowed size of 25MB.",
         )
 
@@ -74,13 +76,14 @@ async def analyze_file(file: UploadFile = File(...)):
 
 
 @router.post("/check-hash")
-async def check_hash_alone(payload: HashCheckRequest):
+@limiter.limit("30/minute")
+async def check_hash_alone(payload: HashCheckRequest, request: Request):
     """
     Privacy-first: Check a file's threat intelligence by hash alone.
     The user's file is never transmitted across the network.
     """
     h = payload.hash_value.strip().lower()
-    if not re.match(r"^[a-f0-9]{32,64}$", h):
+    if not (re.match(r"^[a-f0-9]{32}$", h) or re.match(r"^[a-f0-9]{40}$", h) or re.match(r"^[a-f0-9]{64}$", h)):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid hash format. Must be hexadecimal 32 (MD5), 40 (SHA-1), or 64 (SHA-256) characters.",
@@ -88,19 +91,41 @@ async def check_hash_alone(payload: HashCheckRequest):
 
     vt_data = await check_virustotal_file_hash(h)
 
-    risk_score = 0
-    threat_level = "SAFE"
-    findings = []
+    risk_score: Optional[int] = None
+    threat_level: str = "UNASSESSED"
+    findings: list[str] = []
 
-    if vt_data and vt_data.get("malicious", 0) > 0:
+    if not vt_data or vt_data.get("status") == "unconfigured":
+        threat_level = "UNASSESSED"
+        risk_score = None
+        findings.append("VirusTotal threat intelligence engine is unconfigured on this server. Cryptographic signature cannot be assessed.")
+    elif vt_data.get("status") in {"error", "timeout"}:
+        threat_level = "UNASSESSED"
+        risk_score = None
+        findings.append(f"Threat intelligence query failed: {vt_data.get('message', 'External query error')}. Target remains unassessed.")
+    elif vt_data.get("status") == "not_found":
+        threat_level = "SAFE"
+        risk_score = 0
+        findings.append("Hash not found in public malware databases (no threat detections recorded in VirusTotal). Note: Absence of prior detections does not guarantee that an unknown binary is harmless.")
+    elif vt_data.get("malicious", 0) > 0:
         mal_count = vt_data["malicious"]
         risk_score = min(mal_count * 15, 100)
         threat_level = "CRITICAL" if mal_count >= 5 else "HIGH"
         findings.append(f"Flagged by {mal_count} security vendors as malicious on VirusTotal.")
-    elif vt_data and vt_data.get("status") == "not_found":
-        findings.append("Hash not found in public malware databases.")
+    elif vt_data.get("suspicious", 0) > 0:
+        susp_count = vt_data["suspicious"]
+        risk_score = min(susp_count * 10, 50)
+        threat_level = "SUSPICIOUS"
+        findings.append(f"Flagged by {susp_count} security vendors as suspicious on VirusTotal.")
     else:
-        findings.append("No threat detections recorded for this cryptographic signature.")
+        # Zero malicious, zero suspicious
+        total_engines = vt_data.get("total_engines", 0)
+        threat_level = "SAFE"
+        risk_score = 0
+        if total_engines > 0:
+            findings.append(f"No threat detections found in VirusTotal: evaluated across {total_engines} security vendors with 0 detections. Note: Absence of detections reduces risk but does not guarantee complete safety.")
+        else:
+            findings.append("No threat detections recorded for this cryptographic signature in VirusTotal.")
 
     return {
         "hash": h,

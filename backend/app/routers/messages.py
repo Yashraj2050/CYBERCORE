@@ -8,9 +8,10 @@ is recorded for deduplication and rate abuse prevention.
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from app.limiter import limiter
 from app.services.message_analyzer import analyze_message
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,8 @@ def get_risk_summary(score: int, scam_type: Optional[str]) -> str:
 
 
 @router.post("/analyze", response_model=MessageAnalyzeResponse)
-async def analyze_suspicious_message(payload: MessageAnalyzeRequest):
+@limiter.limit("30/minute")
+async def analyze_suspicious_message(payload: MessageAnalyzeRequest, request: Request):
     """
     Analyzes message text for phishing indicators, social engineering,
     urgency tactics, OTP fraud, and brand impersonation.

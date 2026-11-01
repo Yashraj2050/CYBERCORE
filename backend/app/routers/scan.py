@@ -12,6 +12,7 @@ from app.models.scan import ScanRequest, ScanResponse, ThreatReportRequest
 from app.services.url_scanner import scan_url
 from app.utils.validators import ValidationError
 from app.config import get_settings
+from app.limiter import limiter
 
 router = APIRouter(prefix="/scan", tags=["Website Scanner"])
 settings = get_settings()
@@ -23,10 +24,11 @@ CACHE_TTL_SECONDS = 3600  # 1 hour
 
 
 @router.post("/", response_model=dict, summary="Scan a URL for security threats")
+@limiter.limit("30/minute")
 async def scan_website(
-    request: ScanRequest,
+    scan_req: ScanRequest,
     background_tasks: BackgroundTasks,
-    http_request: Request,
+    request: Request,
 ):
     """
     Analyze a URL for security threats.
@@ -39,7 +41,7 @@ async def scan_website(
     """
     try:
         # Check cache first (by normalized URL)
-        url_lower = request.url.lower()
+        url_lower = scan_req.url.lower()
         if url_lower in _scan_cache:
             cached = _scan_cache[url_lower]
             import time
@@ -50,7 +52,7 @@ async def scan_website(
                 return result
 
         # Run scan
-        result = await scan_url(request.url, source=request.source)
+        result = await scan_url(scan_req.url, source=scan_req.source)
 
         # Cache result
         import time
@@ -64,7 +66,7 @@ async def scan_website(
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error("Scan error for URL %s: %s", request.url, str(e), exc_info=True)
+        logger.error("Scan error for URL %s: %s", scan_req.url, str(e), exc_info=True)
         raise HTTPException(
             status_code=500,
             detail="An error occurred during URL analysis. Please try again."
@@ -112,28 +114,36 @@ async def get_scan_by_domain(domain: str):
 
 
 @router.post("/report", summary="Report a malicious URL")
-async def report_threat(report: ThreatReportRequest, http_request: Request):
+@limiter.limit("5/minute")
+async def report_threat(report: ThreatReportRequest, request: Request):
     """
     Allow users to report a URL as a threat.
-    Reports are stored for review and potential submission to threat intelligence databases.
+    Persisted to the CYBERCORE SQLite database with duplicate detection.
     """
     from app.utils.validators import validate_url, ValidationError as VE
+    from app.services.report_store import report_store
     try:
         validated_url, domain = validate_url(report.url)
     except VE as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # In production: store to database, optionally forward to PhishTank or similar
-    logger.info(
-        "Threat report received: url=%s type=%s",
-        validated_url, report.threat_type
-    )
+    try:
+        outcome, stored_report = report_store.add_report(
+            url=validated_url,
+            threat_type=report.threat_type,
+            source="scan_api",
+        )
+    except Exception as e:
+        logger.exception("Failed to store threat report from scan router: %s", str(e))
+        raise HTTPException(status_code=500, detail="Database failure storing report.")
 
     return {
         "status": "received",
         "message": "Thank you for your report. It will be reviewed by our security team.",
         "url": validated_url,
         "threat_type": report.threat_type,
+        "report_id": stored_report.get("id"),
+        "duplicate": (outcome == "DUPLICATE"),
     }
 
 

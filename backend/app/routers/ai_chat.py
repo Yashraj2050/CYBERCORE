@@ -7,9 +7,10 @@ and digital safety guidance.
 
 import logging
 from typing import Optional, List, Dict
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
+from app.limiter import limiter
 from app.services.ai_service import generate_ai_response, SUGGESTED_QUESTIONS
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,8 @@ class ChatResponse(BaseModel):
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat_with_cybercore_ai(payload: ChatRequest):
+@limiter.limit("15/minute")
+async def chat_with_cybercore_ai(payload: ChatRequest, request: Request):
     """
     Interact with the CYBERCORE AI Cybersecurity Advisor.
     Provides instant analysis, explanations, and risk mitigation strategies.

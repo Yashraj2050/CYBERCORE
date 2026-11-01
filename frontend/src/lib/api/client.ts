@@ -64,9 +64,18 @@ export class ApiClient {
       requestHeaders["Authorization"] = `Bearer ${token}`;
     }
 
-    let serializedBody: string | undefined = undefined;
+    let serializedBody: BodyInit | undefined = undefined;
     if (body !== undefined) {
-      if (typeof body === "string") {
+      if (typeof FormData !== "undefined" && body instanceof FormData) {
+        serializedBody = body;
+        // Let the runtime/browser compute the multipart boundary header automatically.
+        // Strip all case variants of Content-Type (e.g. content-type, Content-Type, Content-type).
+        Object.keys(requestHeaders).forEach((key) => {
+          if (key.toLowerCase() === "content-type") {
+            delete requestHeaders[key];
+          }
+        });
+      } else if (typeof body === "string") {
         serializedBody = body;
       } else {
         serializedBody = JSON.stringify(body);

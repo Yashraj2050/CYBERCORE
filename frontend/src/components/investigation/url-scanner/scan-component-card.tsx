@@ -56,8 +56,10 @@ export function ScanComponentCard({ id, name, description, detail }: ScanCompone
 
   const getFindingVariant = (type: string) => {
     switch (type) {
+      case "CONFIRMED_THREAT":
       case "CRITICAL_THREAT":
         return "critical";
+      case "HEURISTIC_HIGH_RISK":
       case "SUSPICIOUS_INDICATOR":
         return "high";
       case "HEURISTIC_ASSESSMENT":

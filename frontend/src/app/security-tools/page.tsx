@@ -72,6 +72,7 @@ const toolModules = [
     payloadType: "multipart/form-data (file: binary)",
     rateLimit: "Standard bus quota",
     status: "READY",
+    href: "/security-tools/file-analyzer",
   },
   {
     id: "files-hash",
@@ -84,6 +85,7 @@ const toolModules = [
     payloadType: '{ "hash_value": "sha256...", "filename": "sample.exe" }',
     rateLimit: "Standard bus quota",
     status: "READY",
+    href: "/security-tools/hash-lookup",
   },
   {
     id: "password",
@@ -170,7 +172,13 @@ export default function SecurityToolsPage() {
                     href={tool.href}
                     className="text-cyber-accent hover:underline flex items-center gap-1 text-[10px] uppercase font-semibold"
                   >
-                    <span>{tool.id === "scanner" ? "LAUNCH SCANNER" : "LAUNCH ANALYZER"}</span>
+                    <span>
+                      {tool.id === "scanner"
+                        ? "LAUNCH SCANNER"
+                        : tool.id === "files-hash"
+                        ? "LAUNCH LOOKUP"
+                        : "LAUNCH ANALYZER"}
+                    </span>
                     <ArrowRight className="h-3 w-3" />
                   </Link>
                 ) : (

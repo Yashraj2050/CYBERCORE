@@ -11,6 +11,8 @@ export interface ScanComponentDetail {
     | "NO_KNOWN_DETECTION"
     | "HEURISTIC_ASSESSMENT"
     | "SUSPICIOUS_INDICATOR"
+    | "HEURISTIC_HIGH_RISK"
+    | "CONFIRMED_THREAT"
     | "CRITICAL_THREAT"
     | string;
   details?: Record<string, unknown>;
@@ -52,12 +54,26 @@ export interface UrlScanResult {
   scan_id: string;
   url: string;
   domain: string;
-  risk_score: number;
-  risk_category: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | string;
-  confidence: "LOW" | "MEDIUM" | "HIGH" | string;
+  risk_score: number | null;
+  risk_category:
+    | "CLEAN"
+    | "LOW_RISK"
+    | "LOW"
+    | "SUSPICIOUS"
+    | "HIGH_RISK"
+    | "HIGH"
+    | "MALICIOUS"
+    | "UNVERIFIED"
+    | "INSUFFICIENT_EVIDENCE"
+    | "MODERATE"
+    | "CRITICAL"
+    | string;
+  confidence: "LOW" | "MEDIUM" | "HIGH" | "UNAVAILABLE" | string;
   coverage_percent: number;
   is_phishing: boolean | null;
   is_malware: boolean | null;
+  phishing_status?: "CONFIRMED_PHISHING" | "SUSPECTED_PHISHING" | "NO_KNOWN_DETECTION" | "UNVERIFIED" | string;
+  malware_status?: "CONFIRMED_MALWARE" | "SUSPECTED_MALWARE" | "NO_KNOWN_DETECTION" | "UNVERIFIED" | string;
   ssl_valid: boolean | null;
   components: ScanComponents;
   unavailable_checks: string[];
@@ -69,6 +85,8 @@ export interface UrlScanResult {
   recommended_actions: string[];
   from_cache: boolean;
 }
+
+export type ScanMode = "scan" | "lookup_id" | "lookup_domain";
 
 export interface UrlScanRequest {
   url: string;

@@ -5,11 +5,16 @@ Provides telemetry, user safety summaries, threat intelligence feeds,
 and user-submitted threat reports.
 """
 
+import os
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, Depends, status
 from pydantic import BaseModel, Field
+
+from app.services.report_store import report_store
+from app.utils.security import require_admin_auth
+from app.limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +22,15 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard & Telemetry"])
 
 
 class ThreatReportRequest(BaseModel):
-    url: str = Field(..., description="Malicious URL or domain being reported")
-    threat_type: str = Field(..., description="phishing, malware, scam, impersonation, or other")
+    url: str = Field(..., min_length=3, max_length=2048, description="Malicious URL or domain being reported")
+    threat_type: str = Field(default="phishing", description="phishing, malware, scam, impersonation, or other")
     description: Optional[str] = Field(None, max_length=1000)
+    source: Optional[str] = Field("web", max_length=32)
+
+
+class ReportStatusUpdateRequest(BaseModel):
+    status: str = Field(..., description="PENDING_REVIEW, VERIFIED, REJECTED, or RESOLVED")
+    risk_classification: Optional[str] = Field(None, description="UNASSESSED, SAFE, SUSPICIOUS, HIGH, CRITICAL")
 
 
 # In-memory recent threats / telemetry store for demonstration & local operation
@@ -70,8 +81,6 @@ RECENT_SCANS = [
         "timestamp": "2026-10-30T10:50:00Z",
     },
 ]
-
-REPORTED_THREATS = []
 
 
 @router.get("/stats")
@@ -124,15 +133,123 @@ async def get_live_threat_feed():
 
 
 @router.post("/report")
-async def report_threat(payload: ThreatReportRequest):
-    """Submit a threat URL or message for crowdsourced community protection."""
-    report = {
-        "id": f"rep-{len(REPORTED_THREATS) + 1}",
-        "url": payload.url,
-        "threat_type": payload.threat_type,
-        "description": payload.description,
-        "reported_at": datetime.now(timezone.utc).isoformat(),
-        "status": "QUEUED_FOR_TRIAGE",
+@limiter.limit("5/minute")
+async def report_threat(payload: ThreatReportRequest, request: Request):
+    """
+    Submit a threat URL or message for crowdsourced community protection.
+    Persisted to the CYBERCORE database with duplicate detection and validation.
+    Rate limited to 5 submissions per minute per client.
+    """
+    try:
+        outcome, report = report_store.add_report(
+            url=payload.url,
+            threat_type=payload.threat_type,
+            description=payload.description,
+            source=payload.source or "web",
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve),
+        )
+    except Exception as e:
+        logger.exception("Failed to record threat report: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database failure. Unable to persist community threat report.",
+        )
+
+    if outcome == "DUPLICATE":
+        return {
+            "status": "DUPLICATE_ACKNOWLEDGED",
+            "message": "A report for this target indicator has already been recorded within the last 24 hours.",
+            "report": report,
+        }
+
+    return {
+        "status": "SUCCESS",
+        "message": "Threat report submitted successfully and stored for community defense.",
+        "report": report,
     }
-    REPORTED_THREATS.append(report)
-    return {"status": "SUCCESS", "message": "Threat report submitted successfully. Thank you for securing the community.", "report": report}
+
+
+@router.get("/reports")
+async def get_community_reports(limit: int = 20):
+    """Retrieve recent verified community threat reports from persistent storage."""
+    try:
+        reports = report_store.get_recent_reports(limit=limit)
+        return {
+            "reports": reports,
+            "total_count": report_store.count_reports(),
+        }
+    except Exception as e:
+        logger.exception("Failed to query reports: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve community reports from database.",
+        )
+
+
+@router.patch("/reports/{report_id}")
+async def moderate_community_report(
+    report_id: str,
+    payload: ReportStatusUpdateRequest,
+    admin: str = Depends(require_admin_auth),
+):
+    """
+    Administrative Endpoint: Moderate review status and risk classification of a report.
+    Requires ADMIN_API_KEY authorization via X-Admin-Key or Authorization Bearer header.
+    """
+    try:
+        updated = report_store.update_report_status(
+            report_id=report_id,
+            new_status=payload.status,
+            risk_classification=payload.risk_classification,
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve),
+        )
+    except Exception as e:
+        logger.exception("Failed to moderate report %s: %s", report_id, str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error during report moderation.",
+        )
+
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Report with ID '{report_id}' not found.",
+        )
+
+    return {
+        "status": "SUCCESS",
+        "message": f"Report '{report_id}' status updated to '{payload.status.upper()}'.",
+        "report": updated,
+    }
+
+
+@router.post("/backup")
+async def trigger_database_backup(
+    admin: str = Depends(require_admin_auth),
+):
+    """
+    Administrative Endpoint: Triggers an online, hot, non-blocking SQLite database backup.
+    Requires ADMIN_API_KEY authorization.
+    """
+    try:
+        backup_path = report_store.backup_database()
+        return {
+            "status": "SUCCESS",
+            "message": "Online hot backup completed and verified successfully.",
+            "backup_file": os.path.basename(backup_path),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as e:
+        logger.exception("Database backup execution failed: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Backup execution failed: {str(e)}",
+        )

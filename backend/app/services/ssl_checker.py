@@ -22,18 +22,29 @@ from app.services.risk_scorer import ComponentScore, Confidence, FindingType
 logger = logging.getLogger(__name__)
 
 
-async def check_ssl_tls(domain: str, port: int = 443) -> ComponentScore:
+async def check_ssl_tls(domain: str, port: Optional[int] = None, scheme: str = "https") -> ComponentScore:
     """
-    Check SSL/TLS certificate for a domain.
+    Check SSL/TLS certificate for a domain or host.
     Returns a ComponentScore reflecting the SSL security posture.
     """
+    actual_port = port or (443 if scheme == "https" else 80)
+    if scheme == "http" and actual_port != 443:
+        return ComponentScore(
+            name="SSL/TLS",
+            score=50.0,
+            confidence=Confidence.HIGH,
+            finding_type=FindingType.SUSPICIOUS_INDICATOR,
+            details={"scheme": "http", "ssl": False, "port": actual_port, "error": f"No SSL/TLS on port {actual_port}"},
+            evidence=[f"Unencrypted connection: Site operates over plain HTTP without SSL/TLS on port {actual_port}"],
+        )
+
     import asyncio
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    return await loop.run_in_executor(None, _check_ssl_sync, domain, port)
+    return await loop.run_in_executor(None, _check_ssl_sync, domain, actual_port)
 
 
 def _check_ssl_sync(domain: str, port: int = 443) -> ComponentScore:
@@ -41,7 +52,7 @@ def _check_ssl_sync(domain: str, port: int = 443) -> ComponentScore:
     ctx = ssl.create_default_context()
 
     try:
-        with socket.create_connection((domain, port), timeout=10) as sock:
+        with socket.create_connection((domain, port), timeout=8) as sock:
             with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
                 cert = ssock.getpeercert()
     except ssl.SSLCertVerificationError as e:
@@ -69,8 +80,18 @@ def _check_ssl_sync(domain: str, port: int = 443) -> ComponentScore:
             score=50.0,
             confidence=Confidence.MEDIUM,
             finding_type=FindingType.SUSPICIOUS_INDICATOR,
-            details={"error": "No SSL/TLS on port 443", "detail": str(e)},
-            evidence=["No valid SSL/TLS certificate found — site does not use HTTPS on port 443"],
+            details={"error": f"No SSL/TLS on port {port}", "detail": str(e)},
+            evidence=[f"No valid SSL/TLS certificate found — site does not use HTTPS on port {port}"],
+        )
+    except ValueError as e:
+        # IP address cannot use SNI hostname
+        return ComponentScore(
+            name="SSL/TLS",
+            score=65.0,
+            confidence=Confidence.HIGH,
+            finding_type=FindingType.SUSPICIOUS_INDICATOR,
+            details={"error": "IP host cannot verify SSL SNI certificate", "detail": str(e)},
+            evidence=["SSL/TLS verification failed: Direct IP address host cannot be verified via standard domain SNI"],
         )
     except Exception as e:
         logger.error("SSL check error for %s: %s", domain, str(e))

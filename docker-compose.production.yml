@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cybercore-backend
+    restart: always
+    environment:
+      - APP_ENV=production
+      - APP_PORT=8000
+      - APP_HOST=0.0.0.0
+      - APP_SECRET_KEY=${APP_SECRET_KEY}
+      - ADMIN_API_KEY=${ADMIN_API_KEY}
+      - DATABASE_PATH=/data/cybercore.db
+      - CORS_ORIGINS=${CORS_ORIGINS:-https://cybercore.security}
+      - TRUSTED_PROXIES=127.0.0.1,::1,172.16.0.0/12,10.0.0.0/8
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-}
+      - GOOGLE_SAFE_BROWSING_API_KEY=${GOOGLE_SAFE_BROWSING_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - HIBP_API_KEY=${HIBP_API_KEY:-}
+      - RATE_LIMIT_PER_MINUTE=60
+    volumes:
+      - cybercore_data:/data
+      - ./backend/backups:/app/backups
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - cybercore-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cybercore-frontend
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-https://api.cybercore.security/api/v1}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - cybercore-net
+
+volumes:
+  cybercore_data:
+    name: cybercore_production_data
+
+networks:
+  cybercore-net:
+    driver: bridge
