@@ -21,8 +21,10 @@ class Settings(BaseSettings):
     app_port: int = 8000
     app_secret_key: str = "CHANGE_ME_IN_PRODUCTION"
     admin_api_key: Optional[str] = None
+    database_url: Optional[str] = None
     database_path: str = "cybercore.db"
     trusted_proxies: str = "127.0.0.1,::1"
+    ingress_secret: Optional[str] = None
 
     @property
     def trusted_proxies_list(self) -> List[str]:

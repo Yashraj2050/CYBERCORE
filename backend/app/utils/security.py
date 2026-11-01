@@ -10,7 +10,7 @@ Provides:
 import ipaddress
 import logging
 import secrets
-from typing import Optional
+from typing import Optional, List
 from fastapi import Request, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -22,31 +22,96 @@ settings = get_settings()
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def get_client_ip(request: Request) -> str:
+def is_trusted_proxy_address(client_host: str, trusted_list: Optional[List[str]] = None) -> bool:
     """
-    Safely extract the real client IP address behind reverse proxies.
-    Prevents IP spoofing by only honoring forward headers when the immediate
-    peer IP is in the trusted proxies whitelist.
+    Check if a peer host IP is an explicitly configured trusted proxy.
+    Only trusts IPs or CIDR blocks explicitly defined in TRUSTED_PROXIES (default: 127.0.0.1, ::1).
+    Does NOT automatically trust all RFC 1918 private ranges.
+    """
+    if not client_host:
+        return False
+
+    proxies = trusted_list if trusted_list is not None else settings.trusted_proxies_list
+
+    # Direct exact match (e.g. "127.0.0.1", "::1", or configured proxy IP)
+    if client_host in proxies:
+        return True
+
+    try:
+        ip = ipaddress.ip_address(client_host)
+    except ValueError:
+        return False
+
+    # Check against explicitly configured CIDR ranges or exact IP definitions
+    for entry in proxies:
+        clean_entry = entry.strip()
+        if not clean_entry:
+            continue
+        try:
+            if "/" in clean_entry:
+                if ip in ipaddress.ip_network(clean_entry, strict=False):
+                    return True
+            else:
+                if ip == ipaddress.ip_address(clean_entry):
+                    return True
+        except ValueError:
+            continue
+
+    return False
+
+
+def is_trusted_proxy_request(request: Request) -> bool:
+    """
+    Determine if an incoming HTTP request is authenticated to supply forwarded client IP headers.
+
+    When INGRESS_SECRET is configured:
+      - INGRESS_SECRET is the authentication mechanism for trusting forwarded client-IP headers.
+      - The Render load balancer's dynamic socket IP does NOT need to belong to a static TRUSTED_PROXIES list.
+      - Forwarded client IP information is accepted ONLY after successful constant-time secret authentication.
+      - If the secret is missing, invalid, or malformed, forwarded headers are ignored and the original
+        socket peer address is used.
+
+    When INGRESS_SECRET is NOT configured (e.g. local development):
+      - Fallback to checking if the direct socket peer host matches TRUSTED_PROXIES (default: 127.0.0.1, ::1).
     """
     direct_client_ip = request.client.host if request.client else "127.0.0.1"
 
-    # Only trust headers if direct connection originates from a trusted reverse proxy
-    trusted_proxies = set(settings.trusted_proxies_list)
+    # When INGRESS_SECRET is configured, it is the sole authentication mechanism for proxy trust
+    if settings.ingress_secret:
+        ingress_token = request.headers.get("x-cybercore-ingress-secret")
+        if not ingress_token:
+            return False
+        # Constant-time comparison prevents timing side-channels
+        return secrets.compare_digest(ingress_token, settings.ingress_secret)
 
-    if direct_client_ip not in trusted_proxies and not any(
-        direct_client_ip.startswith(prefix) for prefix in ("10.", "172.16.", "192.168.", "127.")
-    ):
+    # Fallback for local development when INGRESS_SECRET is unset
+    return is_trusted_proxy_address(direct_client_ip)
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    Safely extract the real client IP address behind reverse proxies.
+    Prevents IP spoofing by only honoring forward headers when the request
+    is verified to originate from an authenticated reverse proxy (via trusted peer IP
+    or validated ingress secret).
+    """
+    direct_client_ip = request.client.host if request.client else "127.0.0.1"
+
+    # Only trust headers if direct connection originates from an authenticated reverse proxy
+    if not is_trusted_proxy_request(request):
         return direct_client_ip
 
     # 1. Cloudflare True-Client-IP / CF-Connecting-IP
     cf_ip = request.headers.get("cf-connecting-ip") or request.headers.get("true-client-ip")
     if cf_ip:
-        cf_clean = cf_ip.strip()
-        try:
-            ipaddress.ip_address(cf_clean)
-            return cf_clean
-        except ValueError:
-            pass
+        # Support single IP or comma-separated if proxies concatenated
+        cf_parts = [p.strip() for p in cf_ip.split(",") if p.strip()]
+        if cf_parts:
+            try:
+                ipaddress.ip_address(cf_parts[0])
+                return cf_parts[0]
+            except ValueError:
+                pass
 
     # 2. Standard X-Forwarded-For header: client, proxy1, proxy2
     xff = request.headers.get("x-forwarded-for")

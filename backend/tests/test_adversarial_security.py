@@ -279,8 +279,9 @@ class TestAdversarialSecurity(unittest.TestCase):
 
     def test_trusted_proxy_correctly_extracts_client_ip(self):
         """
-        When connection originates from trusted proxy (e.g. 127.0.0.1 or 10.0.0.1),
+        When connection originates from trusted proxy (e.g. 127.0.0.1),
         CF-Connecting-IP and X-Forwarded-For are safely extracted.
+        Unconfigured private IPs outside TRUSTED_PROXIES are rejected as untrusted.
         """
         mock_req_cf = MagicMock()
         mock_req_cf.client.host = "127.0.0.1"
@@ -288,9 +289,15 @@ class TestAdversarialSecurity(unittest.TestCase):
         self.assertEqual(get_client_ip(mock_req_cf), "198.51.100.77")
 
         mock_req_xff = MagicMock()
-        mock_req_xff.client.host = "10.0.1.5"
-        mock_req_xff.headers = {"x-forwarded-for": "198.51.100.88, 10.0.1.5"}
+        mock_req_xff.client.host = "127.0.0.1"
+        mock_req_xff.headers = {"x-forwarded-for": "198.51.100.88, 127.0.0.1"}
         self.assertEqual(get_client_ip(mock_req_xff), "198.51.100.88")
+
+        # Private IP outside explicitly configured proxy list is treated as untrusted peer
+        mock_req_untrusted_private = MagicMock()
+        mock_req_untrusted_private.client.host = "10.0.1.5"
+        mock_req_untrusted_private.headers = {"x-forwarded-for": "198.51.100.88"}
+        self.assertEqual(get_client_ip(mock_req_untrusted_private), "10.0.1.5")
 
     def test_rate_limit_enforcement_under_rapid_requests(self):
         """

@@ -117,8 +117,8 @@ class TestProductionReadiness(unittest.TestCase):
         self.assertEqual(get_client_ip(mock_req_cf), "203.0.113.45")
 
         mock_req_xff = MagicMock()
-        mock_req_xff.client.host = "10.0.0.1"
-        mock_req_xff.headers = {"x-forwarded-for": "198.51.100.22, 10.0.0.2"}
+        mock_req_xff.client.host = "127.0.0.1"
+        mock_req_xff.headers = {"x-forwarded-for": "198.51.100.22, 127.0.0.1"}
         self.assertEqual(get_client_ip(mock_req_xff), "198.51.100.22")
 
         # Untrusted external IP cannot spoof forward headers
@@ -126,6 +126,12 @@ class TestProductionReadiness(unittest.TestCase):
         mock_req_untrusted.client.host = "198.51.100.99"
         mock_req_untrusted.headers = {"x-forwarded-for": "8.8.8.8"}
         self.assertEqual(get_client_ip(mock_req_untrusted), "198.51.100.99")
+
+        # Untrusted private IP outside proxy list cannot spoof forward headers
+        mock_req_untrusted_private = MagicMock()
+        mock_req_untrusted_private.client.host = "10.0.0.1"
+        mock_req_untrusted_private.headers = {"x-forwarded-for": "198.51.100.22"}
+        self.assertEqual(get_client_ip(mock_req_untrusted_private), "10.0.0.1")
 
     def test_sensitive_field_redaction_in_logging(self):
         """redact_sensitive_dict masks credentials and keys."""

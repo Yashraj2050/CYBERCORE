@@ -47,6 +47,12 @@ async def lifespan(app: FastAPI):
                 "FATAL: Default APP_SECRET_KEY cannot be used in production! "
                 "Provide a cryptographically secure key via APP_SECRET_KEY."
             )
+        if not settings.database_url:
+            raise RuntimeError(
+                "FATAL: DATABASE_URL must be configured in production! "
+                "Managed PostgreSQL connection string is required. "
+                "Silent fallback to SQLite is disallowed in production mode."
+            )
         if not settings.admin_api_key:
             logger.warning(
                 "SECURITY WARNING: ADMIN_API_KEY is not configured in production. "
@@ -56,14 +62,21 @@ async def lifespan(app: FastAPI):
     db_healthy, db_msg, db_meta = report_store.check_health()
     if not db_healthy:
         logger.error("FATAL: Database health check failed on startup: %s", db_msg)
+        if settings.app_env == "production":
+            raise RuntimeError(f"FATAL: Production database connection failed on startup: {db_msg}")
     else:
-        logger.info("Database initialized successfully: %s (Mode: %s)", report_store.db_path, db_meta.get("mode"))
+        logger.info(
+            "Database initialized successfully: Engine=%s (Reports=%d)",
+            db_meta.get("engine"),
+            db_meta.get("total_reports", 0),
+        )
 
     logger.info("VirusTotal: %s", "configured" if settings.virustotal_api_key else "NOT configured")
     logger.info("Google Safe Browsing: %s", "configured" if settings.google_safe_browsing_api_key else "NOT configured")
     logger.info("AI Provider: %s (%s)", settings.ai_provider, settings.ai_model)
     yield
     logger.info("CYBERCORE backend shutting down...")
+    report_store.close()
 
 
 # ─────────────────────────────────────────────────────────────
