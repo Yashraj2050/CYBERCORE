@@ -1,0 +1,5 @@
+/**
+ * CYBERCORE Consolidated Styles
+ * Re-exports the unified canonical application styles from src/app/globals.css
+ */
+@import "../app/globals.css";

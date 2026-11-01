@@ -1,0 +1,280 @@
+/**
+ * CYBERCORE Design Tokens - Single Source of Truth
+ * Visual Identity: Obsidian Luxury × Arctic Glass × Monolithic Brutalism
+ * Dual Theme Engine: Dark Mode (Obsidian) & Light Mode (Arctic Glass)
+ */
+
+/* =============================================================================
+   1. SHARED GEOMETRY, BLUR & TYPOGRAPHY METRICS
+   ============================================================================= */
+:root {
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Monolithic Precision Radii */
+  --radius-none: 0px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius: 4px;
+
+  /* Controlled Backdrop Blur */
+  --blur-sm: 8px;
+  --blur-md: 16px;
+  --blur-lg: 24px;
+}
+
+/* =============================================================================
+   2. LIGHT THEME (ARCTIC GLASS × SURGICAL MONOLITH)
+   ============================================================================= */
+:root,
+.light {
+  /* Foundation - Crisp Arctic Canvas */
+  --bg-canvas: #E9EDF1;
+  --bg-primary: #F3F5F7;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #E9EDF1;
+
+  /* Elevated Surgical Surfaces */
+  --bg-surface: #FFFFFF;
+  --bg-surface-elevated: #F8FAFC;
+  --bg-surface-panel: #FFFFFF;
+  --bg-surface-hover: #F1F4F8;
+  --bg-surface-active: #E4E8ED;
+
+  /* Monolithic Charcoal & Silver Typography */
+  --text-primary: #15191F;
+  --text-secondary: #536477;
+  --text-muted: #7E8C9D;
+  --text-dim: #9DAAB8;
+  --text-inverse: #FFFFFF;
+
+  /* Deep Arctic Blue / Steel Accents (High Contrast on Light) */
+  --accent-primary: #38516D;
+  --accent-hover: #243548;
+  --accent-muted: #647E99;
+  --accent-deep: #1A2735;
+  --accent-subtle: rgba(56, 81, 109, 0.08);
+  --accent-surface: rgba(56, 81, 109, 0.04);
+  --accent-glow: rgba(56, 81, 109, 0.14);
+
+  /* Monolithic Structural Borders */
+  --border-subtle: #E2E8F0;
+  --border-default: #D8DEE5;
+  --border-strong: #BDC7D3;
+  --border-accent: rgba(56, 81, 109, 0.40);
+  --border-accent-bright: #38516D;
+
+  /* Threat Intelligence Palette (WCAG AA Compliant High Contrast) */
+  --threat-critical: #CD2B31;
+  --threat-critical-bg: rgba(205, 43, 49, 0.08);
+  --threat-critical-border: rgba(205, 43, 49, 0.35);
+
+  --threat-high: #D9530F;
+  --threat-high-bg: rgba(217, 83, 15, 0.08);
+  --threat-high-border: rgba(217, 83, 15, 0.35);
+
+  --threat-medium: #C07700;
+  --threat-medium-bg: rgba(192, 119, 0, 0.08);
+  --threat-medium-border: rgba(192, 119, 0, 0.35);
+
+  --threat-low: #2B57C2;
+  --threat-low-bg: rgba(43, 87, 194, 0.08);
+  --threat-low-border: rgba(43, 87, 194, 0.35);
+
+  --threat-info: #0077D4;
+  --threat-info-bg: rgba(0, 119, 212, 0.08);
+  --threat-info-border: rgba(0, 119, 212, 0.35);
+
+  --threat-secure: #228456;
+  --threat-secure-bg: rgba(34, 132, 86, 0.08);
+  --threat-secure-border: rgba(34, 132, 86, 0.35);
+
+  /* Legacy Status Mapping */
+  --status-critical: var(--threat-critical);
+  --status-warning: var(--threat-medium);
+  --status-success: var(--threat-secure);
+  --status-info: var(--threat-info);
+
+  /* Arctic Architectural Glass System (Light Mode) */
+  --glass-highlight: rgba(255, 255, 255, 0.90);
+  --glass-subtle-bg: rgba(243, 245, 247, 0.82);
+  --glass-subtle-border: rgba(189, 199, 211, 0.55);
+
+  --glass-panel-bg: rgba(255, 255, 255, 0.84);
+  --glass-panel-border: rgba(189, 199, 211, 0.70);
+  --glass-panel-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.08);
+
+  --liquid-glass-surface: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(243, 245, 247, 0.90) 100%
+  );
+  --liquid-glass-border: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(189, 199, 211, 0.65) 100%
+  );
+
+  --glass-bg: var(--glass-subtle-bg);
+  --glass-border: var(--glass-subtle-border);
+  --glass-blur: var(--blur-md);
+
+  /* Shadows (Restrained, Crisp) */
+  --shadow-subtle: 0 1px 3px 0 rgba(15, 23, 42, 0.05);
+  --shadow-surface: 0 4px 16px -2px rgba(15, 23, 42, 0.07);
+  --shadow-elevated: 0 16px 36px -6px rgba(15, 23, 42, 0.12);
+  --shadow-accent-glow: 0 0 20px -4px rgba(56, 81, 109, 0.15);
+
+  /* Grid lines */
+  --grid-line-color: rgba(56, 81, 109, 0.045);
+
+  /* shadcn/ui Compatibility Mapping (Light HSL) */
+  --background: 210 17% 96%;
+  --foreground: 216 20% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 216 20% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 216 20% 10%;
+  --primary: 212 32% 33%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 213 20% 93%;
+  --secondary-foreground: 216 20% 10%;
+  --muted: 213 20% 93%;
+  --muted-foreground: 214 18% 40%;
+  --accent: 213 20% 93%;
+  --accent-foreground: 212 32% 33%;
+  --destructive: 358 64% 49%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 213 18% 87%;
+  --input: 213 18% 87%;
+  --ring: 212 32% 33%;
+}
+
+/* =============================================================================
+   3. DARK THEME (OBSIDIAN LUXURY × MONOLITHIC BRUTALISM)
+   ============================================================================= */
+.dark {
+  /* Foundation - Deep Obsidian Canvas */
+  --bg-canvas: #060709;
+  --bg-primary: #090B0E;
+  --bg-secondary: #101318;
+  --bg-tertiary: #141820;
+
+  /* Graphite Elevated Surfaces */
+  --bg-surface: #12161D;
+  --bg-surface-elevated: #161C24;
+  --bg-surface-panel: #1A212B;
+  --bg-surface-hover: #1E2532;
+  --bg-surface-active: #242D3C;
+
+  /* Muted Silver & Monolithic Typography */
+  --text-primary: #F1F2F3;
+  --text-secondary: #9299A3;
+  --text-muted: #5F6875;
+  --text-dim: #3E4652;
+  --text-inverse: #090B0E;
+
+  /* Restrained Arctic Blue / Ice Accents */
+  --accent-primary: #B6C7D9;
+  --accent-hover: #D3E1EE;
+  --accent-muted: #7A8999;
+  --accent-deep: #2A3847;
+  --accent-subtle: rgba(182, 199, 217, 0.08);
+  --accent-surface: rgba(182, 199, 217, 0.03);
+  --accent-glow: rgba(182, 199, 217, 0.14);
+
+  /* Monolithic Structural Borders */
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-default: #1E2530;
+  --border-strong: #2D3745;
+  --border-accent: rgba(182, 199, 217, 0.35);
+  --border-accent-bright: #B6C7D9;
+
+  /* Semantic Threat Intelligence Palette (Dark Precision) */
+  --threat-critical: #E5484D;
+  --threat-critical-bg: rgba(229, 72, 77, 0.10);
+  --threat-critical-border: rgba(229, 72, 77, 0.35);
+
+  --threat-high: #F76B15;
+  --threat-high-bg: rgba(247, 107, 21, 0.10);
+  --threat-high-border: rgba(247, 107, 21, 0.35);
+
+  --threat-medium: #F5A623;
+  --threat-medium-bg: rgba(245, 166, 35, 0.10);
+  --threat-medium-border: rgba(245, 166, 35, 0.35);
+
+  --threat-low: #3E63DD;
+  --threat-low-bg: rgba(62, 99, 221, 0.10);
+  --threat-low-border: rgba(62, 99, 221, 0.35);
+
+  --threat-info: #0090FF;
+  --threat-info-bg: rgba(0, 144, 255, 0.10);
+  --threat-info-border: rgba(0, 144, 255, 0.35);
+
+  --threat-secure: #30A46C;
+  --threat-secure-bg: rgba(48, 164, 108, 0.10);
+  --threat-secure-border: rgba(48, 164, 108, 0.35);
+
+  /* Legacy Status Mapping */
+  --status-critical: var(--threat-critical);
+  --status-warning: var(--threat-medium);
+  --status-success: var(--threat-secure);
+  --status-info: var(--threat-info);
+
+  /* Obsidian Architectural Glass System (Dark Mode) */
+  --glass-highlight: rgba(255, 255, 255, 0.08);
+  --glass-subtle-bg: rgba(9, 11, 14, 0.80);
+  --glass-subtle-border: rgba(182, 199, 217, 0.10);
+
+  --glass-panel-bg: rgba(18, 23, 30, 0.78);
+  --glass-panel-border: rgba(182, 199, 217, 0.16);
+  --glass-panel-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.85);
+
+  --liquid-glass-surface: linear-gradient(
+    135deg,
+    rgba(22, 28, 36, 0.76) 0%,
+    rgba(14, 18, 23, 0.90) 100%
+  );
+  --liquid-glass-border: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.14) 0%,
+    rgba(182, 199, 217, 0.06) 50%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+
+  --glass-bg: var(--glass-subtle-bg);
+  --glass-border: var(--glass-subtle-border);
+  --glass-blur: var(--blur-md);
+
+  /* Shadows (Deep Obsidian, Non-emissive) */
+  --shadow-subtle: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --shadow-surface: 0 4px 16px -2px rgba(0, 0, 0, 0.75);
+  --shadow-elevated: 0 16px 40px -6px rgba(0, 0, 0, 0.88);
+  --shadow-accent-glow: 0 0 20px -6px rgba(182, 199, 217, 0.12);
+
+  /* Grid lines */
+  --grid-line-color: rgba(182, 199, 217, 0.035);
+
+  /* shadcn/ui Compatibility Mapping (Dark HSL) */
+  --background: 216 22% 5%;
+  --foreground: 210 9% 95%;
+  --card: 218 20% 8%;
+  --card-foreground: 210 9% 95%;
+  --popover: 217 19% 10%;
+  --popover-foreground: 210 9% 95%;
+  --primary: 212 28% 78%;
+  --primary-foreground: 216 22% 5%;
+  --secondary: 217 19% 12%;
+  --secondary-foreground: 210 9% 95%;
+  --muted: 217 19% 14%;
+  --muted-foreground: 217 9% 61%;
+  --accent: 217 19% 14%;
+  --accent-foreground: 212 28% 78%;
+  --destructive: 358 75% 59%;
+  --destructive-foreground: 210 9% 95%;
+  --border: 218 23% 15%;
+  --input: 218 23% 15%;
+  --ring: 212 28% 78%;
+}

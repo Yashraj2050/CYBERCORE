@@ -1,0 +1,212 @@
+@import "../styles/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    background-color: var(--bg-primary);
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-x: clip;
+    scroll-behavior: smooth;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html.light {
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: clip;
+    overflow-y: visible;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  ::selection {
+    background-color: var(--accent-subtle);
+    color: var(--text-primary);
+  }
+
+  /* Monolithic Precision Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--bg-canvas);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-default);
+    border-radius: 0px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--border-strong);
+  }
+}
+
+@layer utilities {
+  /* ==========================================================================
+     Architectural Glass System Utilities (Selective 3-Tier Hierarchy)
+     ========================================================================== */
+
+  /* Tier 1 — Ambient / Background Glass (Top Nav, Status Headers) */
+  .glass-subtle {
+    background-color: var(--glass-subtle-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-subtle-border);
+    box-shadow: inset 0 1px 0 0 var(--glass-highlight);
+  }
+
+  /* Arctic Glass Surface (High-translucency, crisp edge) */
+  .arctic-glass {
+    background-color: var(--glass-subtle-bg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--glass-subtle-border);
+    box-shadow: inset 0 1px 0 0 var(--glass-highlight);
+  }
+
+  /* Tier 2 — Elevated / Floating Translucent Panel (Metric Panels, Threat Headers) */
+  .glass-panel {
+    background-color: var(--glass-panel-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-panel-border);
+    box-shadow: inset 0 1px 0 0 var(--glass-highlight), var(--glass-panel-shadow);
+  }
+
+  /* Tier 3 — Interactive / High-Focus Liquid Glass (Command Palette, Modals, Popovers) */
+  .liquid-glass {
+    background: var(--liquid-glass-surface);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--border-strong);
+    box-shadow: inset 0 1px 0 0 var(--glass-highlight), var(--shadow-elevated);
+  }
+
+  /* Refined Glass Borders */
+  .glass-border {
+    border: 1px solid var(--glass-subtle-border);
+  }
+
+  .glass-border-panel {
+    border: 1px solid var(--glass-panel-border);
+  }
+
+  /* ==========================================================================
+     Monolithic Brutalism Surfaces & Structure
+     ========================================================================== */
+
+  /* Monolithic Surface Container */
+  .monolithic-surface {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-default);
+  }
+
+  /* Hairline Monolithic Border */
+  .border-hairline {
+    border-width: 1px;
+    border-color: var(--border-subtle);
+  }
+
+  /* Monolithic Corner Accent Ticks */
+  .monolithic-box {
+    position: relative;
+  }
+  .monolithic-box::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 8px;
+    height: 8px;
+    border-top: 2px solid var(--accent-primary);
+    border-left: 2px solid var(--accent-primary);
+    pointer-events: none;
+    z-index: 10;
+  }
+  .monolithic-box::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 8px;
+    height: 8px;
+    border-bottom: 2px solid var(--accent-primary);
+    border-right: 2px solid var(--accent-primary);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* Structural Grid Background */
+  .bg-structural-grid {
+    background-image: linear-gradient(to right, var(--grid-line-color) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line-color) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  /* Branded Initializer Loader Shimmer */
+  @keyframes loader-shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
+  }
+
+  .animate-loader-shimmer {
+    animation: loader-shimmer 1.8s ease-in-out infinite;
+  }
+
+  /* Branded Initializer Logo Reveal */
+  @keyframes loader-logo-reveal {
+    0% {
+      opacity: 0;
+      transform: translateY(8px) scale(0.97);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .animate-logo-reveal {
+    animation: loader-logo-reveal 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-loader-shimmer,
+    .animate-logo-reveal {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+}
