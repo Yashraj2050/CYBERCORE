@@ -19,7 +19,7 @@ import logging
 import hashlib
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Tuple
 import httpx
 
 from app.config import get_settings
