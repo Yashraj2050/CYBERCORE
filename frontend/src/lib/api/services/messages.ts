@@ -77,7 +77,7 @@ export const messagesService = {
         status: isTimeout ? 408 : 0,
         message: isTimeout
           ? "Request Timed Out: Analysis service took longer than 30s to respond."
-          : "Backend Bus Unavailable: Unable to connect to FastAPI service at http://localhost:8000.",
+          : "Backend Bus Unavailable: Unable to connect to the FastAPI backend service.",
         isTimeout,
         detail: err.message,
       };

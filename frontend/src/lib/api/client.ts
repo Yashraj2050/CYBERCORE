@@ -27,6 +27,16 @@ export class ApiClient {
     endpoint: string,
     params?: Record<string, string | number | boolean | undefined | null>
   ): string {
+    if (!this.baseUrl) {
+      throw new ApiError({
+        message:
+          "CYBERCORE API is unconfigured: Backend base URL is not set. Please configure NEXT_PUBLIC_API_BASE_URL.",
+        status: 0,
+        statusText: "Configuration Error",
+        endpoint,
+      });
+    }
+
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
     const url = new URL(`${this.baseUrl}${cleanEndpoint}`);
 

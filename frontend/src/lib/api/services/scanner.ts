@@ -110,7 +110,7 @@ export const scannerService = {
         status: isTimeout ? 408 : 0,
         message: isTimeout
           ? "Scan Request Timed Out: Inspection engine took longer than 30s to respond."
-          : "Backend Bus Unavailable: Unable to reach FastAPI service at http://localhost:8000.",
+          : "Backend Bus Unavailable: Unable to reach the FastAPI backend service.",
         isTimeout,
         detail: err.message,
       };

@@ -124,7 +124,7 @@ export function MessageAnalysisError({
             </>
           ) : isNetwork ? (
             <>
-              <li>• Verify that the FastAPI backend service is running on http://localhost:8000.</li>
+              <li>• Verify that the FastAPI backend service is running and reachable.</li>
               <li>• Check that endpoint POST /api/v1/messages/analyze is active and accepting requests.</li>
             </>
           ) : (

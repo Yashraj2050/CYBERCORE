@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api/client";
+import { apiConfig } from "@/config/api";
 import type {
   DashboardStats,
   RecentActivityResponse,
@@ -66,8 +67,13 @@ export const dashboardService = {
    */
   async getHealth(): Promise<HealthCheckResponse> {
     // Health endpoint is mounted at /api/health directly
-    const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1")
-      .replace(/\/v1\/?$/, "");
+    const rawBase = apiConfig.baseUrl || process.env.NEXT_PUBLIC_API_BASE_URL || "";
+    if (!rawBase) {
+      throw new Error(
+        "Backend API base URL is not configured. Please supply NEXT_PUBLIC_API_BASE_URL in environment variables."
+      );
+    }
+    const baseUrl = rawBase.replace(/\/v1\/?$/, "");
     const res = await fetch(`${baseUrl}/health`, {
       headers: { Accept: "application/json" },
       cache: "no-store",

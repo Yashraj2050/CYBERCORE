@@ -127,7 +127,7 @@ export const securityToolsService = {
         title: isTimeout ? "Request Timed Out" : "Backend Bus Unavailable",
         message: isTimeout
           ? "Signature lookup took longer than 30s to respond."
-          : "Unable to establish socket connection with FastAPI backend at http://localhost:8000.",
+          : "Unable to establish socket connection with the FastAPI backend service.",
         isTimeout,
         detail: err.message,
       };
@@ -195,7 +195,7 @@ export const securityToolsService = {
         title: isTimeout ? "Request Timed Out" : "Backend Bus Unavailable",
         message: isTimeout
           ? "Binary inspection took longer than 30s to respond."
-          : "Unable to establish socket connection with FastAPI backend at http://localhost:8000.",
+          : "Unable to establish socket connection with the FastAPI backend service.",
         isTimeout,
         detail: err.message,
       };

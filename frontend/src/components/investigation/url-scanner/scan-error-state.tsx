@@ -124,8 +124,8 @@ export function ScanErrorState({
             </>
           ) : isNetwork ? (
             <>
-              <li>• Ensure the Python FastAPI service is active on http://localhost:8000.</li>
-              <li>• Verify that CORS and network firewalls permit localhost communication.</li>
+              <li>• Ensure the Python FastAPI backend service is active and reachable.</li>
+              <li>• Verify that CORS and network firewalls permit communication with the API.</li>
             </>
           ) : isTimeout ? (
             <>

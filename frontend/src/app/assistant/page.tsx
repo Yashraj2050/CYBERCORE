@@ -109,7 +109,7 @@ export default function AssistantPage() {
       const failureMessage: MessageItem = {
         id: `err-${Date.now()}`,
         role: "assistant",
-        content: `API Error: ${errorMsg}\n\nPlease verify that the CYBERCORE backend is running at http://localhost:8000 and has AI keys configured.`,
+        content: `API Error: ${errorMsg}\n\nPlease verify that the CYBERCORE backend is running and reachable, and has AI keys configured.`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         isError: true,
       };

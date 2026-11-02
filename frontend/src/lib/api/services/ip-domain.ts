@@ -119,7 +119,7 @@ export const ipDomainService = {
         title: isTimeout ? "Request Timed Out" : "Backend Bus Unavailable",
         message: isTimeout
           ? "Network analysis timed out while awaiting external DNS or RDAP resolvers."
-          : "Unable to establish socket connection with FastAPI backend at http://localhost:8000.",
+          : "Unable to establish socket connection with the FastAPI backend service.",
         isTimeout,
         detail: err.message,
       };
