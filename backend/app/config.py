@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     google_safe_browsing_api_key: str = ""
     hibp_api_key: str = ""
     phishtank_api_key: str = ""
+    urlhaus_auth_key: str = ""
 
     # AI
     openai_api_key: str = ""

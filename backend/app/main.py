@@ -73,6 +73,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("VirusTotal: %s", "configured" if settings.virustotal_api_key else "NOT configured")
     logger.info("Google Safe Browsing: %s", "configured" if settings.google_safe_browsing_api_key else "NOT configured")
+    logger.info("URLhaus: %s", "configured" if settings.urlhaus_auth_key else "NOT configured")
     logger.info("AI Provider: %s (%s)", settings.ai_provider, settings.ai_model)
     yield
     logger.info("CYBERCORE backend shutting down...")
@@ -218,12 +219,14 @@ async def health_check():
             "external_intelligence": {
                 "virustotal": "configured" if settings.virustotal_api_key else "unconfigured",
                 "google_safe_browsing": "configured" if settings.google_safe_browsing_api_key else "unconfigured",
+                "urlhaus": "configured" if settings.urlhaus_auth_key else "unconfigured",
                 "ai_assistant": "configured" if (settings.openai_api_key or settings.gemini_api_key) else "unconfigured",
             },
         },
         "api_keys": {
             "virustotal": bool(settings.virustotal_api_key),
             "google_safe_browsing": bool(settings.google_safe_browsing_api_key),
+            "urlhaus": bool(settings.urlhaus_auth_key),
             "ai": bool(settings.openai_api_key or settings.gemini_api_key),
         },
     }
