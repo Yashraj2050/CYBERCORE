@@ -86,8 +86,9 @@ app = FastAPI(
     title="CYBERCORE API",
     description="AI-Powered Cybersecurity Platform — Backend API",
     version="1.0.0",
-    docs_url="/api/docs" if settings.app_env == "development" else None,
-    redoc_url="/api/redoc" if settings.app_env == "development" else None,
+    openapi_url="/openapi.json",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
     lifespan=lifespan,
 )
 
